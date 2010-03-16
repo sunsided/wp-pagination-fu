@@ -1,0 +1,52 @@
+ol.pagination-fu {
+    padding: 0;
+    margin: 0;
+    text-align: center;
+}
+ol.pagination-fu li {
+    display: inline;
+    list-style:none;
+}
+ol.pagination-fu a {
+    background: #ddd;
+    border: 1px solid #ccc;
+    color: #666;
+    margin-right: 4px;
+    padding: 3px 6px;
+    text-align: center;
+    text-decoration:none;
+}
+
+ol.pagination-fu li span, ol.pagination-fu li a {
+    border-radius: 4px;
+      -moz-border-radius: 4px;
+      -webkit-border-radius: 4px;
+}
+
+ol.pagination-fu a:hover, ol.pagination-fu a:active {
+    background: #ccc;
+    color: #888;
+}
+ol.pagination-fu .gap {
+    color: #999;
+    margin-right: 4px;
+    cursor: default;
+}
+ol.pagination-fu .page.current {
+    color: #fff;
+    background: #5f87ae;
+    border: 1px solid #89adcf;
+    margin-right: 4px;
+    padding: 3px 6px;
+    cursor: default;
+}
+ol.pagination-fu .next.current, .prev.current {
+    color: #aaa;
+    background: #ddd;
+    border: 1px solid #ccc;
+    margin-right: 4px;
+    padding:3px 6px;
+    cursor: default;
+}
+ol.pagination-fu .page {}
+ol.pagination-fu .prev, ol.pagination-fu .next {}
