@@ -81,6 +81,52 @@ class PaginationFuRenderer
         // return the default
         return $defaultReturnValue;
     }
+
+    /**
+     * Translates a page index to a page number, post index, etc.
+     */
+    function lookupPageData($page, $defaultTitle = FALSE, $defaultURL = FALSE)
+    {
+        $resultArray = array(
+            'id'        => $page,
+            'title'     => empty($defaultTitle) ? $page : $defaultTitle,
+            'url'       => $defaultURL);
+
+        // if we are on the index page
+        if(is_home())
+        {
+            // get the page url
+            $resultArray['url']     = $this->getUrl($page);
+
+            // try to get the title from the page number
+            $title = $this->getTitleFromPage($page, FALSE);
+            if(!empty($url)) $resultArray['title'] = $title;
+        }
+        // if we are on a post page
+        elseif(is_single())
+        {
+            global $wpdb;
+            $result = $wpdb->get_results( $wpdb->prepare( "
+                        		SELECT wp_posts.ID
+                        		FROM $wpdb->posts
+                        		WHERE (post_type = 'post'
+                        				AND post_parent = '0'
+                        				AND post_status = 'publish')
+                        		ORDER BY post_date DESC
+                                LIMIT 1
+                                OFFSET %d" ,
+                        		max(intval($page)-1, 0) ));
+            if(empty($result)) return FALSE;
+
+            // do only the ID lookup to let WP handle the filter internals etc.
+            $resultArray['id'] = $result[0]->ID;
+            $resultArray['title'] = get_the_title($result[0]->ID);
+            $resultArray['url'] = get_permalink($result[0]->ID);
+        }
+
+        // return the result
+        return $resultArray;
+    }
 }
 
 /**
@@ -116,12 +162,14 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
      */
     function render($value, $page, $is_current = FALSE)
     {
-        $url          = $this->getUrl($page);
+        $data = $this->lookupPageData($page);
+
+        $url          = $data['url'];
 
         $openTag      = !$is_current ? $this->openTagActive : $this->openTagCurrent;
         $closeTag     = !$is_current ? $this->closeTagActive : $this->closeTagCurrent;
 
-        $title        = $this->getTitleFromPage($page, $value);
+        $title        = $data['title'];
         $searchArray  = array('{url}', '{title}', '{page}');
         $replacements = array( $url,    $title,    $page);
 
@@ -166,13 +214,17 @@ class PaginationFuLinkRenderer extends PaginationFuRenderer
      */
     function render($value, $page, $class = 'next', $is_current = FALSE)
     {
-        $url          = $this->getUrl($page);
+        $data = $this->lookupPageData($page);
+        $url          = $data['url'];
+
+        $title = $value;
+        if(!empty($data['title'])) $title = $data['title'];
 
         $openTag      = !$is_current ? $this->openTagActive : $this->openTagCurrent;
         $closeTag     = !$is_current ? $this->closeTagActive : $this->closeTagCurrent;
 
         $searchArray  = array('{url}', '{title}', '{page}', '{class}');
-        $replacements = array( $url,    $value,    $page,    $class);
+        $replacements = array( $url,    $title,    $page,    $class);
 
         $openTag      = str_ireplace($searchArray, $replacements, $openTag);
         $closeTag     = str_ireplace($searchArray, $replacements, $closeTag);
@@ -531,17 +583,21 @@ class PaginationFuClass
         //  Archiv
         //  Kommentar
 
-        // Title provider für Seitentitel, wenn pro Seite nur ein Artikel angezeigt wird!
+        /*
+        ob_start();
+        print_r($wp_query);
+        $content = ob_get_contents();
+        ob_end_clean();
+        die('<pre>'.$content.'</pre>');
+        */
 
-        global $wp_query;
+        // Get the page infos
+        $pageInfos = $this->getCurrentPageAndTotalPages();
+        if($pageInfos === FALSE) return FALSE;
 
-        // Get the current page
-        $page = get_query_var('paged');
-        $page = !empty($page) ? max(intval($page), 1) : 1;
-
-        // Get the total number of pages
-        $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
-        $pages = max(intval(ceil($wp_query->found_posts / $posts_per_page)), 1);
+        // Extract information
+        $page = $pageInfos['page'];
+        $pages = $pageInfos['pages'];
 
         // Next/prev pages
         $previousPage = max(1, $page-1);
@@ -586,6 +642,61 @@ class PaginationFuClass
 
         // Apply filters and return
         return apply_filters('render_pagination_fu', $content);
+    }
+
+    /**
+     * Gets the current page and the total page number
+     * @return array|bool The page information or FALSE in case of an error
+     */
+    function getCurrentPageAndTotalPages()
+    {
+        $page = 0;
+        $pages = 0;
+
+        if(is_home())
+        {
+            global $wp_query;
+
+            // Get the current page
+            $page = get_query_var('paged');
+            $page = !empty($page) ? max(intval($page), 1) : 1;
+
+            // Get the total number of pages
+            $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
+            $pages = max(intval(ceil($wp_query->found_posts / $posts_per_page)), 1);
+        }
+        elseif(is_single())
+        {
+            global $wpdb, $wp_query;
+
+            // TODO: Was ist mit passwortgeschützten Seiten? Versteckten Seiten? Unveröffentlichten Seiten?
+            $result = $wpdb->get_results( $wpdb->prepare( "
+                        		SELECT COUNT(*) AS count
+                        		FROM $wpdb->posts
+                        		WHERE wp_posts.ID >= %d
+                        			AND (post_type = 'post'
+                        				AND post_parent = '0'
+                        				AND post_status = 'publish')
+                        		ORDER BY post_date DESC" ,
+                        		$wp_query->post->ID ));
+            $page = $result[0]->count;
+
+            $result = $wpdb->get_results("
+                        		SELECT COUNT(*) AS count
+                        		FROM $wpdb->posts
+                        		WHERE (post_type = 'post'
+                        				AND post_parent = '0'
+                        				AND post_status = 'publish')
+                        		ORDER BY post_date DESC");
+            $pages = $result[0]->count;
+        }
+        else
+        {
+            return FALSE;
+        }
+
+        // return the information
+        return array('page' => $page, 'pages' => $pages);
     }
 
     /**
