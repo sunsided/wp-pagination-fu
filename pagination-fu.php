@@ -59,7 +59,10 @@ class PaginationFuRenderer
      */
     function getTitleFromPage($page, $default = FALSE)
     {
+        global $PaginationFu;
         $defaultReturnValue = empty($default) ? $page : $default;
+        $defaultReturnValue = str_ireplace('{page}', $defaultReturnValue, $PaginationFu->options['alternative_title']);
+        if(!$PaginationFu->options['do_title_lookup']) return $defaultReturnValue;
 
         // Check the post count
         $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
@@ -437,6 +440,8 @@ class PaginationFuClass
         'html_older'                => 'older',
         'html_newer'                => 'newer',
         'always_show_navlinks'      => FALSE,
+        'do_title_lookup'           => TRUE,
+        'alternative_title'         => 'Page {page}',
 
         'embed_css'                 => TRUE,
                         );
@@ -477,6 +482,11 @@ class PaginationFuClass
     function init()
     {
         load_plugin_textdomain('pagination_fu');
+
+        // translate default options
+        $this->defaultOptions['html_older']         = __('older', 'pagination_fu');
+        $this->defaultOptions['html_newer']         = __('newer', 'pagination_fu');
+        $this->defaultOptions['alternative_title']  = __('Page {page}', 'pagination_fu');
 
         // load options
         $options = get_option('pagination_fu_options', $defaultOptions);
