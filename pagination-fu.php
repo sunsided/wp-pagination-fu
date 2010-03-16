@@ -235,42 +235,6 @@ class PaginationFuEnumerator
     var $minPagesAtEnd = 1;
 
     /**
-     * @var PaginationFuRenderer Renderer for the ellipsis item.
-     */
-    var $rendererEllipsis;
-
-    /**
-     * @var PaginationFuRenderer Renderer for the page item.
-     */
-    var $rendererPage;
-
-    /**
-     * PHP 4 style constructor
-     */
-    function PaginationFuEnumerator()
-    {
-        $this->__construct();
-    }
-
-    /**
-     * PHP 5 style constructor
-     */
-    function __construct()
-    {
-        $this->createDefaultRenderers();
-    }
-
-    /**
-     * Creates the default renderers
-     */
-
-    function createDefaultRenderers()
-    {
-        $this->rendererEllipsis     = new PaginationFuEllipsisRenderer();
-        $this->rendererPage         = new PaginationFuPageRenderer();
-    }
-
-    /**
      * Gets the total number of items.
      * @return int The number of total items that will be generated.
      */
@@ -390,7 +354,8 @@ class PaginationFuEnumerator
      */
     function renderEllipsis(&$items)
     {
-        $items[] = $this->rendererEllipsis->render(FALSE, FALSE, FALSE);
+        global $PaginationFu;
+        $items[] = $PaginationFu->rendererEllipsis->render(FALSE, FALSE, FALSE);
     }
 
     /**
@@ -399,11 +364,12 @@ class PaginationFuEnumerator
      */
     function renderRange(&$items, $start, $end, $current)
     {
+        global $PaginationFu;
         if($start < 1 || $end < 1 || $start > $end || $end < $start) return;
         for($i=$start; $i<=$end; ++$i)
         {
             $is_current = ($i == $current);
-            $items[] = $this->rendererPage->render($i, $i, $is_current);
+            $items[] = $PaginationFu->rendererPage->render($i, $i, $is_current);
         }
     }
 }
@@ -457,6 +423,16 @@ class PaginationFuClass
     var $rendererLinks;
 
     /**
+     * @var PaginationFuRenderer Renderer for the ellipsis item.
+     */
+    var $rendererEllipsis;
+
+    /**
+     * @var PaginationFuRenderer Renderer for the page item.
+     */
+    var $rendererPage;
+
+    /**
      * PHP4 style constructor
      */
     function PaginationFu()
@@ -504,7 +480,20 @@ class PaginationFuClass
 
         // Create a new enumerator
         $this->enumerator       = new PaginationFuEnumerator();
+
+        // create default renderers
+        $this->createDefaultRenderers();
+    }
+
+    /**
+     * Creates the default renderers
+     */
+
+    function createDefaultRenderers()
+    {
         $this->rendererLinks    = new PaginationFuLinkRenderer();
+        $this->rendererEllipsis = new PaginationFuEllipsisRenderer();
+        $this->rendererPage     = new PaginationFuPageRenderer();
     }
 
     /**
