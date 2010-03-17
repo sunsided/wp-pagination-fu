@@ -38,7 +38,14 @@ ol.pagination-fu .page.current {
     border: 1px solid #89adcf;
     margin-right: 4px;
     padding: 3px 6px;
+
+}
+ol.pagination-fu span.page.current {
     cursor: default;
+}
+ol.pagination-fu a.page.current {
+    /*background: #5f87ae;*/
+    background: #60AE87
 }
 ol.pagination-fu .next.current, .prev.current {
     color: #aaa;

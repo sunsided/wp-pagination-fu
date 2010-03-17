@@ -99,8 +99,8 @@ class PaginationFuRenderer
             $resultArray['url']     = $this->getUrl($page);
 
             // try to get the title from the page number
-            $title = $this->getTitleFromPage($page, FALSE);
-            if(!empty($url)) $resultArray['title'] = $title;
+            $title = $this->getTitleFromPage($page);
+            if(!empty($title)) $resultArray['title'] = $title;
         }
         // if we are on a post page
         elseif(is_single())
@@ -127,6 +127,39 @@ class PaginationFuRenderer
         // return the result
         return $resultArray;
     }
+
+    /**
+     * Gets the page index from a post ID
+     * @return int|bool The page index (1 based) or FALSE in case of an error
+     */
+    function getPageLinkFromPostId($postId, $postIndex = FALSE)
+    {
+        global $wpdb, $wp_query;
+
+        // lookup the post index if it is not already known
+        if(empty($postIndex) || intval($postIndex) < 1)
+        {
+            $result = $wpdb->get_results( $wpdb->prepare( "
+                        		SELECT COUNT(*) AS count
+                        		FROM $wpdb->posts
+                        		WHERE wp_posts.ID >= %d
+                        			AND (post_type = 'post'
+                        				AND post_parent = '0'
+                        				AND post_status = 'publish')
+                        		ORDER BY post_date DESC" ,
+                        		$postId ));
+            if(empty($result)) return FALSE;
+            $postIndex = $result[0]->count;
+        }
+
+        // calculate page link
+        $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
+        $postIndex = max($postIndex - 1, 0);
+        $pageIndex = intval($postIndex / $posts_per_page) + 1;
+
+        // return the value
+        return $pageIndex;
+    }
 }
 
 /**
@@ -137,7 +170,7 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
     /**
      * @var The opening tag for an active page link
      */
-    var $openTagActive      = '<a class="page page-{page}" href="{url}" title="{title}">';
+    var $openTagActive      = '<a class="page page-{page}{additional_classes}" href="{url}" title="{title}">';
 
     /**
      * @var The closing tag for an active page link
@@ -147,7 +180,7 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
     /**
      * @var The opening tag for the current page
      */
-    var $openTagCurrent      = '<span class="page page-{page} current" title="{title}">';
+    var $openTagCurrent      = '<span class="page page-{page} current{additional_classes}" title="{title}">';
 
     /**
      * @var The closing tag for the current page
@@ -165,13 +198,34 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
         $data = $this->lookupPageData($page);
 
         $url          = $data['url'];
+        $title        = $data['title'];
 
         $openTag      = !$is_current ? $this->openTagActive : $this->openTagCurrent;
         $closeTag     = !$is_current ? $this->closeTagActive : $this->closeTagCurrent;
+        $additionalClasses = '';
 
-        $title        = $data['title'];
-        $searchArray  = array('{url}', '{title}', '{page}');
-        $replacements = array( $url,    $title,    $page);
+        // special treatment for single pages
+        if($is_current && is_single())
+        {
+            $pageId     = $this->getPageLinkFromPostId(0, $page);
+
+            global $wp_query, $PaginationFu;
+
+            // url h@x - remove page permalink from url, then add blog base url
+            $postUrl    = $url;
+            $url        = $this->getUrl($pageId);
+            $url        = str_replace($postUrl, get_bloginfo('home').'/', $url);
+
+            $openTag    = $this->openTagActive;
+            $closeTag   = $this->closeTagActive;
+
+            $title      = str_ireplace('{page}', $pageId, $PaginationFu->options['to_index_title']);
+
+            $additionalClasses = ' current';
+        }
+
+        $searchArray  = array('{url}', '{title}', '{page}', '{additional_classes}');
+        $replacements = array( $url,    $title,    $page,    $additionalClasses);
 
         $openTag      = str_ireplace($searchArray, $replacements, $openTag);
         $closeTag     = str_ireplace($searchArray, $replacements, $closeTag);
@@ -460,6 +514,7 @@ class PaginationFuClass
         'always_show_navlinks'      => FALSE,
         'do_title_lookup'           => TRUE,
         'alternative_title'         => 'Page {page}',
+        'to_index_title'            => 'back to the index, page {page}',
 
         'embed_css'                 => TRUE,
                         );
@@ -515,6 +570,7 @@ class PaginationFuClass
         $this->defaultOptions['html_older']         = __('older', 'pagination_fu');
         $this->defaultOptions['html_newer']         = __('newer', 'pagination_fu');
         $this->defaultOptions['alternative_title']  = __('Page {page}', 'pagination_fu');
+        $this->defaultOptions['to_index_title']     = __('back to the index, page {page}', 'pagination_fu');
 
         // load options
         $options = get_option('pagination_fu_options', $defaultOptions);
