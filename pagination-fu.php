@@ -207,16 +207,9 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
         // special treatment for single pages
         if($is_current && is_single())
         {
+            global $PaginationFu;
             $pageId     = $this->getPageLinkFromPostId(0, $page);
-
-            global $wp_query, $PaginationFu;
-
-            // url h@x - remove page permalink from url, then add blog base url
-            $postUrl    = $url;
-            $url        = str_replace($postUrl, '', $this->getUrl($pageId));
-            if($url[0] == '/') $url = substr($url, 1);      // remove first slash
-            if($url[0] == '&') $url = '?'.substr($url, 1);  // replace ampersand at the beginning
-            $url        = get_bloginfo('home').'/'.$url;    // combine to full url
+            $url        = trailingslashit(get_option('home')).'?paged='.$pageId;
 
             $openTag    = $this->openTagActive;
             $closeTag   = $this->closeTagActive;
