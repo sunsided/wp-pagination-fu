@@ -1,0 +1,3 @@
+* what about general pages? does that even make sense?
+* Comment navigation
+* private/protected pages?

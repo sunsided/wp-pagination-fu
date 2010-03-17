@@ -93,7 +93,7 @@ class PaginationFuRenderer
             'url'       => $defaultURL);
 
         // if we are on the index page
-        if(is_home())
+        if(is_home() || is_archive())
         {
             // get the page url
             $resultArray['url']     = $this->getUrl($page);
@@ -711,7 +711,7 @@ class PaginationFuClass
         $page = 0;
         $pages = 0;
 
-        if(is_home())
+        if(is_home() || is_archive())
         {
             global $wp_query;
 
