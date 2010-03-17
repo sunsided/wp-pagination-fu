@@ -213,15 +213,17 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
 
             // url h@x - remove page permalink from url, then add blog base url
             $postUrl    = $url;
-            $url        = $this->getUrl($pageId);
-            $url        = str_replace($postUrl, get_bloginfo('home').'/', $url);
+            $url        = str_replace($postUrl, '', $this->getUrl($pageId));
+            if($url[0] == '/') $url = substr($url, 1);      // remove first slash
+            if($url[0] == '&') $url = '?'.substr($url, 1);  // replace ampersand at the beginning
+            $url        = get_bloginfo('home').'/'.$url;    // combine to full url
 
             $openTag    = $this->openTagActive;
             $closeTag   = $this->closeTagActive;
 
             $title      = str_ireplace('{page}', $pageId, $PaginationFu->options['to_index_title']);
 
-            $additionalClasses = ' current';
+            $additionalClasses = ' current linktoindex';
         }
 
         $searchArray  = array('{url}', '{title}', '{page}', '{additional_classes}');
@@ -514,7 +516,7 @@ class PaginationFuClass
         'always_show_navlinks'      => FALSE,
         'do_title_lookup'           => TRUE,
         'alternative_title'         => 'Page {page}',
-        'to_index_title'            => 'back to the index, page {page}',
+        'to_index_title'            => 'Back to index (page {page})',
 
         'embed_css'                 => TRUE,
                         );
@@ -570,7 +572,7 @@ class PaginationFuClass
         $this->defaultOptions['html_older']         = __('older', 'pagination_fu');
         $this->defaultOptions['html_newer']         = __('newer', 'pagination_fu');
         $this->defaultOptions['alternative_title']  = __('Page {page}', 'pagination_fu');
-        $this->defaultOptions['to_index_title']     = __('back to the index, page {page}', 'pagination_fu');
+        $this->defaultOptions['to_index_title']     = __('Back to index (page {page})', 'pagination_fu');
 
         // load options
         $options = get_option('pagination_fu_options', $defaultOptions);

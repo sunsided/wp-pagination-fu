@@ -43,7 +43,7 @@ ol.pagination-fu .page.current {
 ol.pagination-fu span.page.current {
     cursor: default;
 }
-ol.pagination-fu a.page.current {
+ol.pagination-fu .page.linktoindex {
     /*background: #5f87ae;*/
     background: #60AE87
 }
