@@ -62,7 +62,9 @@ class PaginationFuRenderer
     {
         global $PaginationFu;
         $defaultReturnValue = empty($default) ? $page : $default;
-        $defaultReturnValue = str_ireplace('{page}', $defaultReturnValue, $PaginationFu->options['alternative_title']);
+
+        $alt_title = ($type == 'comments') ? $PaginationFu->options['comments_alternative_title'] : $PaginationFu->options['alternative_title'];
+        $defaultReturnValue = str_ireplace('{page}', $defaultReturnValue, $alt_title);
         if(!$PaginationFu->options['do_title_lookup'] || $type == 'comments') return $defaultReturnValue;
 
         // Check the post count
@@ -507,18 +509,25 @@ class PaginationFuClass
      */
     var $defaultOptions = array(
         'main_class'                => 'pagination-fu',
+        'main_comments_class'       => 'pagination-fu pagination-fu-comments',
         'html_main_start'           => '<div class="{class}" role="navigation">',
         'html_main_end'             => '</div>',
         'html_list_start'           => '<ol class="{class}">',
         'html_list_end'             => '</ol>',
         'reverse_list'              => FALSE,
+        'reverse_comments_list'     => FALSE,
         'html_right_icon'           => '&#160;&#187;',
         'html_left_icon'            => '&#171;&#160;',
         'html_older'                => 'older',
         'html_newer'                => 'newer',
+        'html_comments_older'       => 'older',
+        'html_comments_newer'       => 'newer',
         'always_show_navlinks'      => FALSE,
+        'always_show_comments_pagination'
+                                    => FALSE,
         'do_title_lookup'           => TRUE,
         'alternative_title'         => 'Page {page}',
+        'comments_alternative_title'=> 'Comment page {page}',
         'to_index_title'            => 'Back to index (page {page})',
 
         'embed_css'                 => TRUE,
@@ -574,7 +583,13 @@ class PaginationFuClass
         // translate default options
         $this->defaultOptions['html_older']         = __('older', 'pagination_fu');
         $this->defaultOptions['html_newer']         = __('newer', 'pagination_fu');
+        $this->defaultOptions['html_comments_older']
+                                                    = __('older', 'pagination_fu');
+        $this->defaultOptions['html_comments_newer']
+                                                    = __('newer', 'pagination_fu');
         $this->defaultOptions['alternative_title']  = __('Page {page}', 'pagination_fu');
+        $this->defaultOptions['comments_alternative_title']
+                                                    = __('Comment page {page}', 'pagination_fu');
         $this->defaultOptions['to_index_title']     = __('Back to index (page {page})', 'pagination_fu');
 
         // load options
@@ -660,12 +675,12 @@ class PaginationFuClass
         $nextPage = min($page+1, $pages);
 
         // next and prev text
-        $is_reverse = $this->options['reverse_list'];
+        $is_reverse = ($type == 'comments') ? $this->options['reverse_comments_list'] : $this->options['reverse_list'];
 
         if($type == 'comments')
         {
-            $prev_text = $is_reverse ? ($this->options['html_older'].$this->options['html_right_icon']) : ($this->options['html_left_icon'].$this->options['html_older']);
-            $next_text = $is_reverse ? ($this->options['html_left_icon'].$this->options['html_newer']) : ($this->options['html_newer'].$this->options['html_right_icon']);
+            $prev_text = $is_reverse ? ($this->options['html_comments_older'].$this->options['html_right_icon']) : ($this->options['html_left_icon'].$this->options['html_comments_older']);
+            $next_text = $is_reverse ? ($this->options['html_left_icon'].$this->options['html_comments_newer']) : ($this->options['html_comments_newer'].$this->options['html_right_icon']);
         }
         else
         {
@@ -700,7 +715,7 @@ class PaginationFuClass
         // revert the list if necessary
         if($is_reverse) $listItems = array_reverse($listItems);
         $class    = $this->options['main_class'];
-        if($type == 'comments') $class .= ' '.$class.'-comments';
+        if($type == 'comments') $class = $this->options['main_comments_class'];
         $content  = str_ireplace('{class}', $class, $this->options['html_main_start']);
         $content .= str_ireplace('{class}', $class, $this->options['html_list_start']);
         $content .= implode('', $listItems);
@@ -738,6 +753,9 @@ class PaginationFuClass
             $difference = $result[0]->count;
             $pages = intval(ceil(($wp_query->comment_count-$difference) / $posts_per_page));
             $page = max(min($page, $pages), 1);
+
+            // do not render if there is only one page
+            if($pages == 1 && !$this->options['always_show_comments_pagination']) return FALSE;
         }
         elseif(is_home() || is_archive())
         {
