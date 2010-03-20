@@ -234,6 +234,33 @@ class PaginationFuRenderer
         if(empty($result)) return FALSE;
         return $result[0]->count;
     }
+
+    /**
+     * Gets the category ID from the category name
+     * @var category_name string The category name
+     * @return The category id or FALSE in case of an error.
+     */
+    function getCategoryId($category_name = FALSE)
+    {
+        global $wpdb, $wp_query;
+
+        $cat_id = get_query_var('cat');
+        if(!empty($cat_id)) return $cat_id;
+
+        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
+        if(empty($category_name)) return FALSE;
+
+        $query = "SELECT wp_term_taxonomy.term_taxonomy_id as id
+                    FROM wp_term_taxonomy
+                    LEFT JOIN wp_terms
+                        ON wp_term_taxonomy.term_id = wp_terms.term_id
+                    WHERE wp_terms.slug = %s
+                    LIMIT 1;";
+        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name ));
+
+        if(empty($result)) return FALSE;
+        return $result[0]->id;
+    }
 }
 
 /**
@@ -287,7 +314,14 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
             {
                 global $wp_query;
                 $cat_name = $wp_query->query['category_name'];
-                $url    = trailingslashit(get_option('home')).'?category_name='.$cat_name.'&paged='.$pageId;
+                $category = get_category_by_slug($cat_name);
+                if(empty($category))
+                    $url  = trailingslashit(get_option('home')).'?category_name='.$cat_name.'&paged='.$pageId;
+                else
+                    $url  = trailingslashit(get_option('home')).'cat='.$category->cat_ID.'&paged='.$pageId;
+
+                // Filter the URL (i.e. for subdomain plug-ins, etc.)
+                $url = apply_filters('get_pagenum_link', $url);
             }
             else
             {
@@ -841,7 +875,7 @@ class PaginationFuClass
         }
         elseif(is_single())
         {
-            // TODO: Was ist mit passwortgeschützten Seiten? Versteckten Seiten? Unveröffentlichten Seiten?
+            // TODO: Was ist mit passwortgeschÃ¼tzten Seiten? Versteckten Seiten? UnverÃ¶ffentlichten Seiten?
             $result = $wpdb->get_results( $wpdb->prepare( "
                         		SELECT COUNT(*) AS count
                         		FROM $wpdb->posts
