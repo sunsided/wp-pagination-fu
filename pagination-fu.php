@@ -164,13 +164,75 @@ class PaginationFuRenderer
             $postIndex = $result[0]->count;
         }
 
-        // calculate page link
+        // return the value
+        return $this->getPageIndexFromPostIndex($postIndex);
+    }
+
+    /**
+     * Gets the post number for a given category name.
+     * @var post_count The number of posts in that category
+     * @var category_name string The category name
+     * @return The number of items or FALSE, in case of an error.
+     */
+    function getPageIdFromCategory($post_count = FALSE, $category_name = FALSE)
+    {
+        global $wpdb, $wp_query;
+
+        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
+        if(empty($category_name)) return FALSE;
+
+        // Get the number of posts
+        if(empty($post_count)) $post_count = $this->getPageCountFromCategory($category_name);
+
+        // Get the current post index
+        $query = "SELECT COUNT(wp_term_relationships.object_id) AS count FROM wp_term_relationships
+                    LEFT JOIN wp_terms ON wp_terms.slug = %s
+                    LEFT JOIN wp_term_taxonomy ON wp_term_taxonomy.term_id = wp_terms.term_id
+                    WHERE wp_term_relationships.term_taxonomy_id = wp_term_taxonomy.term_taxonomy_id
+                        AND wp_term_relationships.object_id >= %d
+                    ORDER BY wp_term_relationships.object_id DESC;";
+        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name, $wp_query->post->ID ));
+
+        if(empty($result)) return FALSE;
+        $postIndex = $result[0]->count;
+
+        // calculate the page id
+        return $this->getPageIndexFromPostIndex($postIndex);
+    }
+
+    /**
+     * Gets the page index from the post index
+     * @var postIndex The post index
+     * @return The page index
+     */
+    function getPageIndexFromPostIndex($postIndex)
+    {
         $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
         $postIndex = max($postIndex - 1, 0);
-        $pageIndex = intval($postIndex / $posts_per_page) + 1;
+        return intval($postIndex / $posts_per_page) + 1;
+    }
 
-        // return the value
-        return $pageIndex;
+    /**
+     * Gets the number of posts for a given category name.
+     * @var category_name string The category name
+     * @return The number of items or FALSE, in case of an error.
+     */
+    function getPageCountFromCategory($category_name = FALSE)
+    {
+        global $wpdb, $wp_query;
+
+        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
+        if(empty($category_name)) return FALSE;
+
+        $query = "SELECT COUNT(wp_term_relationships.object_id) AS count FROM wp_term_relationships
+                    LEFT JOIN wp_terms ON wp_terms.slug = %s
+                    LEFT JOIN wp_term_taxonomy ON wp_term_taxonomy.term_id = wp_terms.term_id
+                    WHERE wp_term_relationships.term_taxonomy_id = wp_term_taxonomy.term_taxonomy_id
+                    ORDER BY wp_term_relationships.object_id DESC;";
+        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name ));
+
+        if(empty($result)) return FALSE;
+        return $result[0]->count;
     }
 }
 
@@ -220,8 +282,18 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
         if($is_current && is_single() && $type == 'default')
         {
             global $PaginationFu;
-            $pageId     = $this->getPageLinkFromPostId(0, $page);
-            $url        = trailingslashit(get_option('home')).'?paged='.$pageId;
+            $pageId     = $this->getPageIdFromCategory();
+            if(!empty($pageId))
+            {
+                global $wp_query;
+                $cat_name = $wp_query->query['category_name'];
+                $url    = trailingslashit(get_option('home')).'?category_name='.$cat_name.'&paged='.$pageId;
+            }
+            else
+            {
+                $pageId = $this->getPageLinkFromPostId(0, $page);
+                $url    = trailingslashit(get_option('home')).'?paged='.$pageId;
+            }
 
             $openTag    = $this->openTagActive;
             $closeTag   = $this->closeTagActive;
