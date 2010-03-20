@@ -102,7 +102,7 @@ class PaginationFuRenderer
             $resultArray['url']     = $this->getUrl($page, $type);
 
             // try to get the title from the page number
-            $title = $this->getTitleFromPage($page, $type);
+            $title = PaginationFuRenderer::getTitleFromPage($page, $type);
             if(!empty($title)) $resultArray['title'] = $title;
         }
         elseif(is_home() || is_archive())
@@ -117,17 +117,41 @@ class PaginationFuRenderer
         // if we are on a post page
         elseif(is_single())
         {
-            global $wpdb;
-            $result = $wpdb->get_results( $wpdb->prepare( "
-                        		SELECT wp_posts.ID
-                        		FROM $wpdb->posts
-                        		WHERE (post_type = 'post'
-                        				AND post_parent = '0'
-                        				AND post_status = 'publish')
-                        		ORDER BY post_date DESC
-                                LIMIT 1
-                                OFFSET %d" ,
-                        		max(intval($page)-1, 0) ));
+            global $wpdb, $PaginationFu;
+
+            // check for category
+            $category_id = PaginationFuRenderer::getCategoryId();
+            $parent_category = empty($category_id) ? FALSE : $category_id;
+
+            // Get the pages
+            if($parent_category === FALSE)
+            {
+                $result = $wpdb->get_results( $wpdb->prepare( "
+                            		SELECT wp_posts.ID
+                            		FROM $wpdb->posts
+                            		WHERE (post_type = 'post'
+                            				AND post_parent = '0'
+                            				AND post_status = 'publish')
+                            		ORDER BY post_date DESC
+                                    LIMIT 1
+                                    OFFSET %d" ,
+                            		max(intval($page)-1, 0) ));
+            }
+            elseif($PaginationFu->options['enable_cat_browsing'])
+            {
+                $result = $wpdb->get_results( $wpdb->prepare( "
+                            		SELECT $wpdb->term_relationships.object_id as ID FROM $wpdb->term_relationships
+                                        LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = 8
+                                        LEFT JOIN $wpdb->posts ON wp_posts.ID = $wpdb->term_relationships.object_id
+                                        WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
+                                            AND (post_type = 'post'
+                                            AND post_parent = '0'
+                                            AND post_status = 'publish')
+                               		ORDER BY post_date DESC
+                                    LIMIT 1
+                                    OFFSET %d",
+                            		max(intval($page)-1, 0) ));
+            }
             if(empty($result)) return FALSE;
 
             // do only the ID lookup to let WP handle the filter internals etc.
@@ -147,6 +171,8 @@ class PaginationFuRenderer
      */
     function getPageIndexFromPostIndex($postIndex)
     {
+        if(is_single()) return $postIndex;
+
         $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
         $postIndex = max($postIndex - 1, 0);
         return intval($postIndex / $posts_per_page) + 1;
@@ -177,7 +203,7 @@ class PaginationFuRenderer
         }
 
         // return the value
-        return $this->getPageIndexFromPostIndex($postIndex);
+        return PaginationFuRenderer::getPageIndexFromPostIndex($postIndex);
     }
 
     /**
@@ -194,14 +220,14 @@ class PaginationFuRenderer
         if(empty($category_name)) return FALSE;
 
         // Get the number of posts
-        if(empty($post_count)) $post_count = $this->getPageCountFromCategory($category_name);
+        if(empty($post_count)) $post_count = PaginationFuRenderer::getPageCountFromCategory($category_name);
 
         // Get the current post index
-        $query = "SELECT COUNT(wp_term_relationships.object_id) AS count FROM wp_term_relationships
-                    LEFT JOIN wp_terms ON wp_terms.slug = %s
-                    LEFT JOIN wp_term_taxonomy ON wp_term_taxonomy.term_id = wp_terms.term_id
-                    WHERE wp_term_relationships.term_taxonomy_id = wp_term_taxonomy.term_taxonomy_id
-                        AND wp_term_relationships.object_id >= %d
+        $query = "SELECT COUNT($wpdb->term_relationships.object_id) AS count FROM $wpdb->term_relationships
+                    LEFT JOIN $wpdb->terms ON $wpdb->terms.slug = %s
+                    LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
+                    WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
+                        AND $wpdb->term_relationships.object_id >= %d
                     ORDER BY wp_term_relationships.object_id DESC;";
         $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name, $wp_query->post->ID ));
 
@@ -209,7 +235,7 @@ class PaginationFuRenderer
         $postIndex = $result[0]->count;
 
         // calculate the page id
-        return $this->getPageIndexFromPostIndex($postIndex);
+        return PaginationFuRenderer::getPageIndexFromPostIndex($postIndex);
     }
 
     /**
@@ -224,11 +250,11 @@ class PaginationFuRenderer
         if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
         if(empty($category_name)) return FALSE;
 
-        $query = "SELECT COUNT(wp_term_relationships.object_id) AS count FROM wp_term_relationships
-                    LEFT JOIN wp_terms ON wp_terms.slug = %s
-                    LEFT JOIN wp_term_taxonomy ON wp_term_taxonomy.term_id = wp_terms.term_id
-                    WHERE wp_term_relationships.term_taxonomy_id = wp_term_taxonomy.term_taxonomy_id
-                    ORDER BY wp_term_relationships.object_id DESC;";
+        $query = "SELECT COUNT($wpdb->term_relationships.object_id) AS count FROM $wpdb->term_relationships
+                    LEFT JOIN $wpdb->terms ON $wpdb->terms.slug = %s
+                    LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
+                    WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
+                    ORDER BY $wpdb->term_relationships.object_id DESC;";
         $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name ));
 
         if(empty($result)) return FALSE;
@@ -250,11 +276,11 @@ class PaginationFuRenderer
         if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
         if(empty($category_name)) return FALSE;
 
-        $query = "SELECT wp_term_taxonomy.term_taxonomy_id as id
-                    FROM wp_term_taxonomy
-                    LEFT JOIN wp_terms
-                        ON wp_term_taxonomy.term_id = wp_terms.term_id
-                    WHERE wp_terms.slug = %s
+        $query = "SELECT $wpdb->term_taxonomy.term_taxonomy_id as id
+                    FROM $wpdb->term_taxonomy
+                    LEFT JOIN $wpdb->terms
+                        ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
+                    WHERE $wpdb->terms.slug = %s
                     LIMIT 1;";
         $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name ));
 
@@ -306,35 +332,37 @@ class PaginationFuPageRenderer extends PaginationFuRenderer
         $additionalClasses = '';
 
         // special treatment for single pages
-        if($is_current && is_single() && $type == 'default')
+        if(is_single() && $type == 'default')
         {
-            global $PaginationFu;
-            $pageId     = $this->getPageIdFromCategory();
-            if(!empty($pageId))
+            global $PaginationFu, $wp_query;
+            if($is_current)
             {
-                global $wp_query;
-                $cat_name = $wp_query->query['category_name'];
-                $category = get_category_by_slug($cat_name);
-                if(empty($category))
-                    $url  = trailingslashit(get_option('home')).'?category_name='.$cat_name.'&paged='.$pageId;
+                $pageId     = PaginationFuRenderer::getPageIdFromCategory();
+                if($PaginationFu->options['enable_cat_browsing'] && !empty($pageId))
+                {
+                    $cat_name = $wp_query->query['category_name'];
+                    $category = get_category_by_slug($cat_name);
+                    if(empty($category))
+                        $url  = trailingslashit(get_option('home')).'?category_name='.$cat_name.'&paged='.$pageId;
+                    else
+                        $url  = trailingslashit(get_option('home')).'cat='.$category->cat_ID.'&paged='.$pageId;
+
+                    // Filter the URL (i.e. for subdomain plug-ins, etc.)
+                    $url = apply_filters('get_pagenum_link', $url);
+                }
                 else
-                    $url  = trailingslashit(get_option('home')).'cat='.$category->cat_ID.'&paged='.$pageId;
+                {
+                    $pageId = PaginationFuRenderer::getPageLinkFromPostId(0, $page);
+                    $url    = trailingslashit(get_option('home')).'?paged='.$pageId;
+                }
 
-                // Filter the URL (i.e. for subdomain plug-ins, etc.)
-                $url = apply_filters('get_pagenum_link', $url);
+                $openTag    = $this->openTagActive;
+                $closeTag   = $this->closeTagActive;
+
+                $title      = str_ireplace('{page}', $pageId, $PaginationFu->options['to_index_title']);
+
+                $additionalClasses = ' current linktoindex';
             }
-            else
-            {
-                $pageId = $this->getPageLinkFromPostId(0, $page);
-                $url    = trailingslashit(get_option('home')).'?paged='.$pageId;
-            }
-
-            $openTag    = $this->openTagActive;
-            $closeTag   = $this->closeTagActive;
-
-            $title      = str_ireplace('{page}', $pageId, $PaginationFu->options['to_index_title']);
-
-            $additionalClasses = ' current linktoindex';
         }
 
         $searchArray  = array('{url}', '{title}', '{page}', '{additional_classes}');
@@ -631,6 +659,7 @@ class PaginationFuClass
         'always_show_navlinks'      => FALSE,
         'always_show_comments_pagination'
                                     => FALSE,
+        'enable_cat_browsing'       => FALSE,
         'do_title_lookup'           => TRUE,
         'alternative_title'         => 'Page {page}',
         'comments_alternative_title'=> 'Comment page {page}',
@@ -875,26 +904,35 @@ class PaginationFuClass
         }
         elseif(is_single())
         {
-            // TODO: Was ist mit passwortgeschützten Seiten? Versteckten Seiten? Unveröffentlichten Seiten?
-            $result = $wpdb->get_results( $wpdb->prepare( "
-                        		SELECT COUNT(*) AS count
-                        		FROM $wpdb->posts
-                        		WHERE wp_posts.ID >= %d
-                        			AND (post_type = 'post'
-                        				AND post_parent = '0'
-                        				AND post_status = 'publish')
-                        		ORDER BY post_date DESC" ,
-                        		$wp_query->post->ID ));
-            $page = $result[0]->count;
+            // are we coming from an archive?
+            if($this->options['enable_cat_browsing'] && !empty($wp_query->query['category_name']))
+            {
+                $pages  = PaginationFuRenderer::getPageCountFromCategory();
+                $page   = PaginationFuRenderer::getPageIdFromCategory($pages);
+            }
+            else
+            {
+                // TODO: Was ist mit passwortgeschützten Seiten? Versteckten Seiten? Unveröffentlichten Seiten?
+                $result = $wpdb->get_results( $wpdb->prepare( "
+                            		SELECT COUNT(*) AS count
+                            		FROM $wpdb->posts
+                            		WHERE wp_posts.ID >= %d
+                            			AND (post_type = 'post'
+                            				AND post_parent = '0'
+                            				AND post_status = 'publish')
+                            		ORDER BY post_date DESC" ,
+                            		$wp_query->post->ID ));
+                $page = $result[0]->count;
 
-            $result = $wpdb->get_results("
-                        		SELECT COUNT(*) AS count
-                        		FROM $wpdb->posts
-                        		WHERE (post_type = 'post'
-                        				AND post_parent = '0'
-                        				AND post_status = 'publish')
-                        		ORDER BY post_date DESC");
-            $pages = $result[0]->count;
+                $result = $wpdb->get_results("
+                            		SELECT COUNT(*) AS count
+                            		FROM $wpdb->posts
+                            		WHERE (post_type = 'post'
+                            				AND post_parent = '0'
+                            				AND post_status = 'publish')
+                            		ORDER BY post_date DESC");
+                $pages = $result[0]->count;
+            }
         }
         else
         {
