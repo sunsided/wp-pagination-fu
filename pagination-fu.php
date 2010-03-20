@@ -141,6 +141,18 @@ class PaginationFuRenderer
     }
 
     /**
+     * Gets the page index from the post index
+     * @var postIndex The post index
+     * @return The page index
+     */
+    function getPageIndexFromPostIndex($postIndex)
+    {
+        $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
+        $postIndex = max($postIndex - 1, 0);
+        return intval($postIndex / $posts_per_page) + 1;
+    }
+
+    /**
      * Gets the page index from a post ID
      * @return int|bool The page index (1 based) or FALSE in case of an error
      */
@@ -198,18 +210,6 @@ class PaginationFuRenderer
 
         // calculate the page id
         return $this->getPageIndexFromPostIndex($postIndex);
-    }
-
-    /**
-     * Gets the page index from the post index
-     * @var postIndex The post index
-     * @return The page index
-     */
-    function getPageIndexFromPostIndex($postIndex)
-    {
-        $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
-        $postIndex = max($postIndex - 1, 0);
-        return intval($postIndex / $posts_per_page) + 1;
     }
 
     /**
