@@ -124,7 +124,7 @@ class PaginationFuRenderer
             $parent_category = empty($category_id) ? FALSE : $category_id;
 
             // Get the pages
-            if($parent_category === FALSE)
+            if($parent_category === FALSE || !$PaginationFu->options['enable_cat_browsing'])
             {
                 $result = $wpdb->get_results( $wpdb->prepare( "
                             		SELECT wp_posts.ID
@@ -793,6 +793,12 @@ class PaginationFuClass
         //  Single
         //  Archiv
         //  Kommentar
+        $cacheKey = 'pagination';
+        if($type == 'comments') $cacheKey = 'pagination-comments';
+
+        // Check cache
+        $cached_result = wp_cache_get( $cacheKey, 'PaginationFu' );
+        if(!empty($cached_result)) return $cached_result;
 
         // check for comments mode and leave if necessary
         if($type == 'comments' && !get_option('page_comments')) return FALSE;
@@ -858,7 +864,11 @@ class PaginationFuClass
         $content .= $this->options['html_main_end']."\n";
 
         // Apply filters and return
-        return apply_filters('render_pagination_fu', $content);
+        $filtered_content = apply_filters('render_pagination_fu', $content);
+
+        // add to chache
+        wp_cache_set( $cacheKey, $filtered_content, 'PaginationFu' );
+        return $filtered_content;
     }
 
     /**
