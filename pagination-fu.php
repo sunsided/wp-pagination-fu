@@ -123,7 +123,15 @@ class PaginationFuRenderer
         $rel = $page->relation;
         if($this->arguments['enable_rel_prefetch'])
         {
-            if(stristr($rel, 'first') !== FALSE || stristr($rel, 'prev') || stristr($rel, 'next')) $rel .= ' prefetch';
+            if(stristr($rel, 'prev') || stristr($rel, 'next')) $rel .= ' prefetch';
+            elseif($this->arguments['type'] == 'default')
+            {
+                if(stristr($rel, 'first') !== FALSE) $rel .= ' prefetch';
+            }
+            else
+            {
+                if(stristr($rel, 'first') !== FALSE || stristr($rel, 'last') !== FALSE) $rel .= ' prefetch';
+            }
         }
         return ' rel="'.$rel.'"';
     }
@@ -170,7 +178,11 @@ class PaginationFuRenderer
     protected function renderStaticLink($page, $position)
     {
         // early exit
-        if($position == 0 && !$this->arguments['always_show_navlinks']) return NULL;
+        if($position == 0)
+        {
+            if($this->arguments['type'] == 'default' && !$this->arguments['always_show_navlinks']) return NULL;
+            elseif($this->arguments['type'] == 'comments' && !$this->arguments['always_show_comments_pagination']) return NULL;
+        }
         
         // get the class and name
         $class  = $page->staticType;
@@ -379,7 +391,7 @@ class PaginationFuEnumerator
         $items = array();
         $current = $error ? 0 : $page; // prevent highlighting a page
         
-        // prev page
+        // prev page       
         $previousPageId = max($page-1, 1);
         $this->addStatic($items, $previousPageId, $page, 'prev');
         
@@ -440,8 +452,12 @@ class PaginationFuEnumerator
      */
     private function addStatic(&$items, $index, $currentPage, $type = 'prev')
     {
-        //TODO: Comment behavior
-        $name               = $type == 'prev' ? $this->arguments['translations']['html_newer'] : $this->arguments['translations']['html_older']; 
+        // comment behavior needed?
+        $comments_mode = $this->arguments['type'] == 'comments';
+
+        $name               = $type == 'prev' ? $this->arguments['translations']['html_newer'] : $this->arguments['translations']['html_older'];
+        if($comments_mode)
+            $name           = $type == 'next' ? $this->arguments['translations']['html_newer'] : $this->arguments['translations']['html_older']; 
         
         $link               = &$this->generateEntity($index, FALSE);
         $link->name         = $name; 
@@ -449,7 +465,10 @@ class PaginationFuEnumerator
         $link->isCurrent    = $index == $currentPage;
         $link->isStatic     = TRUE;
         $link->staticType   = $type;
+        
         $link->relation     = $type == 'prev' ? 'prev' : ($type == 'next' ? 'next' : NULL);
+        if($comments_mode)
+            $link->relation = $type == 'next' ? 'prev' : ($type == 'prev' ? 'next' : NULL);
 
         $items[]            = $link;
     }    
@@ -514,7 +533,7 @@ class PaginationFuEnumerator
                                     AND comment_approved > 0" ,
                         		$wp_query->post->ID ));
             $difference = $result[0]->count;
-            $pages = intval(ceil(($wp_query->comment_count-$difference) / $posts_per_page));
+            $pages = max(intval(ceil(($wp_query->comment_count-$difference) / $posts_per_page)), 1);
             $page = max(min($page, $pages), 1);
 
             // do not render if there is only one page
@@ -712,7 +731,7 @@ class PaginationFuEnumerator
             if(empty($result)) return FALSE;
             
             // do only the ID lookup to let WP handle the filter internals etc.
-            return $result[0]->ID;
+            $index = $result[0]->ID;
         }
         
         return $index;
@@ -784,7 +803,7 @@ class PaginationFuEnumerator
                
         // try to generate an index backlink
         $url = FALSE;
-        if(is_single() && $strideIndex == $this->currentPage) 
+        if(is_single() && $strideIndex == $this->currentPage && $this->arguments['type'] == 'default') 
         {
             $url = $this->generateIndexBacklink($pageId, $strideIndex, $pageData);
             $pageData['backlink'] = $url;
@@ -795,7 +814,7 @@ class PaginationFuEnumerator
         {
             if($this->arguments['type'] == 'comments')
             {
-                $url = get_comments_pagenum_link($pageId);  
+                $url = get_comments_pagenum_link($strideIndex);  
             } 
             elseif(is_single()) 
             {
@@ -1010,7 +1029,7 @@ class PaginationFuClass
         'reverse_comments_list'         => FALSE,
         'always_show_navlinks'          => FALSE,
         'always_show_comments_pagination'
-                                        => TRUE,
+                                        => FALSE,
         'enable_index_backlink'         => TRUE,
         'enable_cat_browsing'           => FALSE,
         'do_title_lookup'               => TRUE,
