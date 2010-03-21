@@ -55,6 +55,11 @@ class PaginationFuEntity
     public $isStatic = FALSE;
     
     /**
+     * @var Determines whether this is a backlink
+     */
+    public $isBacklink = FALSE;
+    
+    /**
      * @var The type of static page
      */
     public $staticType = NULL;
@@ -132,10 +137,15 @@ class PaginationFuRenderer
     {
         $rel = $this->getRelTag($page);
         
-        if($page->isCurrent)
-            $element = '<span class="page page-'.$page->strideIndex.' current" title="'.$page->title.'">'.$page->strideIndex.'</span>';
+        // backlink, yay
+        $class = 'page';
+        $backlink_enabled = $page->isBacklink && $this->arguments['enable_index_backlink'];
+        if($backlink_enabled) $class .= ' current backlink linktoindex'; 
+        
+        if($page->isCurrent && !$backlink_enabled)
+            $element = '<span class="page-'.$page->strideIndex.' current '.$class.'" title="'.$page->title.'">'.$page->strideIndex.'</span>';
         else
-            $element = '<a class="page page-'.$page->strideIndex.'" href="'.$page->url.'" title="'.$page->title.'"'.$rel.'>'.$page->strideIndex.'</a>';
+            $element = '<a class="page-'.$page->strideIndex.' '.$class.'" href="'.$page->url.'" title="'.$page->title.'"'.$rel.'>'.$page->strideIndex.'</a>';
 
         $tag = '<li>'.$element.'</li>';
         return $tag;   
@@ -179,7 +189,7 @@ class PaginationFuRenderer
         
         // relation
         $rel = $this->getRelTag($page);
-        
+                        
         // render
         if($page->isCurrent)
             $element = '<span class="page-'.$page->strideIndex.' current '.$class.'" title="'.$page->title.'">'.$name.'</span>';
@@ -549,7 +559,6 @@ class PaginationFuEnumerator
                 $page = $result[0]->count;
 
                 //TODO: Es gibt garantiert die Anzahl der Posts in wp_query
-                var_dump($wp_query->found_posts);
                 $result = $wpdb->get_results("
                             		SELECT COUNT(*) AS count
                             		FROM $wpdb->posts
@@ -601,6 +610,9 @@ class PaginationFuEnumerator
         // edges
         if($index == 1 && $index == $this->currentPage-1) $entity->relation = "first prev";
         elseif($index == $this->totalPages && $index == $this->currentPage+1) $entity->relation = "last next";
+        
+        // backlink?
+        $entity->isBacklink     = !empty($data['index_pageid']);
         
         // Return the entity reference
         $this->cachePageData($data, $pageId);
@@ -665,7 +677,7 @@ class PaginationFuEnumerator
         
         // Get the information
         if(is_single())
-        {
+        {           
             // check for category
             $category_id = $this->getCategoryId();
             $parent_category = empty($category_id) ? FALSE : $category_id;
@@ -739,7 +751,12 @@ class PaginationFuEnumerator
         }
         elseif(is_single())
         {
-            if(empty($pageData['title']))
+            if(!empty($pageData['backlink']))
+            {
+                $pageId = $pageData['index_pageid'];
+                $pageData['title'] = str_ireplace('{page}', $pageId, $this->arguments['translations']['to_index_title']);
+            }
+            elseif(empty($pageData['title']))
             {
                 $pageData['title'] = get_the_title($pageId);
             }
@@ -769,7 +786,7 @@ class PaginationFuEnumerator
                
         // try to generate an index backlink
         $url = FALSE;
-        if($strideIndex == $this->currentPage) 
+        if(is_single() && $strideIndex == $this->currentPage) 
         {
             $url = $this->generateIndexBacklink($pageId, $strideIndex, $pageData);
             $pageData['backlink'] = $url;
@@ -805,7 +822,33 @@ class PaginationFuEnumerator
      */
     private function generateIndexBacklink($pageId, $strideIndex, &$pageData = NULL)
     {
-        return FALSE;
+        // special treatment for single pages
+        if(!is_single() || $this->arguments['type'] != 'default') return FALSE;
+        
+        global $wp_query;
+        $pageId     = $this->getPageIdFromCategory();
+        if($this->arguments['enable_cat_browsing'] && !empty($pageId))
+        {           
+            $cat_name = $wp_query->query['category_name'];
+            $category = get_category_by_slug($cat_name);
+            if(empty($category))
+                $url  = trailingslashit(get_option('home')).'?category_name='.$cat_name.'&paged='.$pageId;
+            else
+                $url  = trailingslashit(get_option('home')).'cat='.$category->cat_ID.'&paged='.$pageId;
+
+            // Filter the URL (i.e. for subdomain plug-ins, etc.)
+            $url = apply_filters('get_pagenum_link', $url);
+        }
+        else
+        {            
+            $pageId = $this->getPageIndexFromPostIndex($strideIndex, TRUE);
+            $url    = trailingslashit(get_option('home')).'?paged='.$pageId;
+        }
+        
+        // save the page id
+        $pageData['index_pageid'] = $pageId;
+        
+        return $url;
     }
     
     /**
@@ -813,9 +856,9 @@ class PaginationFuEnumerator
      * @var postIndex The post index
      * @return The page index
      */
-    protected function getPageIndexFromPostIndex($postIndex)
+    protected function getPageIndexFromPostIndex($postIndex, $forceCalculation = FALSE)
     {
-        if(is_single()) return $postIndex;
+        if(is_single() && !$forceCalculation) return $postIndex;
 
         $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
         $postIndex = max($postIndex - 1, 0);
@@ -966,6 +1009,7 @@ class PaginationFuClass
         'always_show_navlinks'          => FALSE,
         'always_show_comments_pagination'
                                         => TRUE,
+        'enable_index_backlink'         => TRUE,
         'enable_cat_browsing'           => FALSE,
         'do_title_lookup'               => TRUE,
         'embed_css'                     => TRUE,
