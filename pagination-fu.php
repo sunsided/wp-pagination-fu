@@ -27,499 +27,263 @@ $Id: propimgscale.php 217173 2010-03-14 02:11:04Z sunside $
 */
 
 /**
- * A renderer for the items.
+ * An entity, describing a page
  */
-class PaginationFuRenderer
+class PaginationFuEntity
 {
     /**
-     * Renders the item.
-     * @param value (mixed) The value to render. Might be a page number or a text.
-     * @param page int The target page
-     * @param is_current bool If set to true, this item represents the current page (e.g. should be considered disabled).
+     * Creates a new instance of the class.
+     * @param id int The page's id
+     * @param name string The page's name
+     * @param url string The page's url
      */
-    function render($value, $page, $is_current = FALSE)
+    public function __construct($id = NULL, $name = NULL, $url = NULL)
     {
-        user_error("Please define me", E_ERROR);
+        $this->id       = $id;
+        $this->name     = $name;
+        $this->url      = $url;
     }
-
+    
     /**
-     * Gets an URL to the given page.
-     * @param page int The page number
-     * @return string The URL to the page
+     * @var Determines whether this is a gap
      */
-    function getUrl($page, $args)
+    public $isGap = FALSE;
+    
+    /**
+     * @var Determines whether this is a static link
+     */
+    public $isStatic = FALSE;
+    
+    /**
+     * @var The type of static page
+     */
+    public $staticType = NULL;
+    
+    /**
+     * @var id int The page id
+     */
+    public $id;
+    
+    /**
+     * @var name string The page's name/title
+     */
+    public $name;  
+    
+    /**
+     * @var url string The page's url
+     */
+    public $url;
+    
+    /**
+     * @var url boolean Determines whether this instance represents the current page
+     */
+    public $isCurrent = FALSE;
+    
+    /**
+     * @var strideIndex int The stride index
+     */
+    public $strideIndex = 0;
+}
+
+/**
+ * Renderer for page elements
+ */
+class PaginationFuRenderer 
+{
+    /**
+     * @var array The arguments for the renderer
+     */
+    protected $arguments; 
+    
+    /**
+     * Contructor
+     * @param arguments array The arguments
+     */    
+    public function __construct(array &$arguments)
     {
-        if($args['type'] == 'comments') return get_comments_pagenum_link($page);
-        return get_pagenum_link(intval($page));
+        $this->arguments = $arguments; 
     }
-
+    
     /**
-     * Gets the link title from the specified page number.
-     * @param page int The page number.
-     * @return The page title or the page number, if no title could be generated.
+     * Renders a page element ([1][2][3])
+     * @param page PaginationFuEntity The entity to be rendered.
+     * @return string A string representing the page elment
      */
-    function getTitleFromPage($page, $args, $default = FALSE)
+    protected function renderPage($page)
     {
-        global $PaginationFu;
-        $defaultReturnValue = empty($default) ? $page : $default;
+        if($page->isCurrent)
+            $element = '<span class="page page-'.$page->strideIndex.' current" title="'.$page->title.'">'.$page->strideIndex.'</span>';
+        else
+            $element = '<a class="page page-'.$page->strideIndex.'" href="'.$page->url.'" title="'.$page->title.'">'.$page->strideIndex.'</a>';
 
-        $alt_title = ($args['type'] == 'comments') ? $args['options']['comments_alternative_title'] : $args['options']['alternative_title'];
-        $defaultReturnValue = str_ireplace('{page}', $defaultReturnValue, $alt_title);
-        if(!$PaginationFu->options['do_title_lookup'] || $args['type'] == 'comments') return $defaultReturnValue;
-
-        // Check the post count
-        $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
-        if($posts_per_page > 1) return $defaultReturnValue;
-
-        // query the post
-        $query = new WP_Query();
-        $query->query('showposts=1'.'&paged='.intval($page));
-
-        // if there is a post, return it's title
-        if(!empty($query->post))
-        {
-            return $query->post->post_title;
-        }
-
-        // return the default
-        return $defaultReturnValue;
+        $tag = '<li>'.$element.'</li>';
+        return $tag;   
     }
-
+    
     /**
-     * Translates a page index to a page number, post index, etc.
+     * Renders a gap/ellipsis (...)
+     * @return string A string representing the gap
      */
-    function lookupPageData($page, $args, $defaultTitle = FALSE, $defaultURL = FALSE)
+    protected function renderGap()
     {
-        $resultArray = array(
-            'id'        => $page,
-            'title'     => empty($defaultTitle) ? $page : $defaultTitle,
-            'url'       => $defaultURL);
-
-        // if we are on the index page
-        if($args['type'] == 'comments')
+        $tag = '<li><span class="gap">&#133;</span></li>';
+        return $tag;
+    }
+    
+    /**
+     * Renders a static link
+     * @param page PaginationFuEntity The entity to be rendered.
+     * @param position The position of the link in the array
+     * @return string A string representing the link (previous, next)
+     */
+    protected function renderStaticLink($page, $position)
+    {
+        // early exit
+        if($position == 0 && !$this->arguments['always_show_navlinks']) return NULL;
+        
+        // get the class and name
+        $class  = $page->staticType;
+        if($position < 0)
         {
-            // get the page url
-            $resultArray['url']     = $this->getUrl($page, $args);
-
-            // try to get the title from the page number
-            $title = PaginationFuRenderer::getTitleFromPage($page, $args);
-            if(!empty($title)) $resultArray['title'] = $title;
+            $name = $this->arguments['tags']['html_left_icon'].$page->name;
         }
-        elseif(is_home() || is_archive())
+        elseif($position > 0)
         {
-            // get the page url
-            $resultArray['url']     = $this->getUrl($page, $args);
-
-            // try to get the title from the page number
-            $title = $this->getTitleFromPage($page, $args);
-            if(!empty($title)) $resultArray['title'] = $title;
+            $name = $page->name.$this->arguments['tags']['html_right_icon'];
+        }  
+        else 
+        {
+            $name = $page->name;
         }
-        // if we are on a post page
-        elseif(is_single())
+        
+        // render
+        if($page->isCurrent)
+            $element = '<span class="page-'.$page->strideIndex.' current '.$class.'" title="'.$page->title.'">'.$name.'</span>';
+        else
+            $element = '<a class="page-'.$page->strideIndex.' '.$class.'" href="'.$page->url.'" title="'.$page->title.'">'.$name.'</a>';
+
+        $tag = '<li>'.$element.'</li>';
+        return $tag; 
+    }
+    
+    /**
+     * Renders the items.
+     * @param pageList array The page list
+     * @return array The rendered items.
+     */
+    public function &render(array $pageList)
+    {
+        $list = array();
+        $position = -1;
+        foreach($pageList as $page)
         {
-            global $wpdb, $PaginationFu;
-
-            // check for category
-            $category_id = PaginationFuRenderer::getCategoryId();
-            $parent_category = empty($category_id) ? FALSE : $category_id;
-
-            // Get the pages
-            if($parent_category === FALSE || !$args['options']['enable_cat_browsing'])
+            // current position check.
+            // keep at -1 until we hit the "current" mark,
+            // afterwards switch to 1
+            if($page->isCurrent) $position = 0;
+            elseif($position == 0) $position = 1;
+            
+            if($page->isGap)
             {
-                $result = $wpdb->get_results( $wpdb->prepare( "
-                            		SELECT wp_posts.ID
-                            		FROM $wpdb->posts
-                            		WHERE (post_type = 'post'
-                            				AND post_parent = '0'
-                            				AND post_status = 'publish')
-                            		ORDER BY post_date DESC
-                                    LIMIT 1
-                                    OFFSET %d" ,
-                            		max(intval($page)-1, 0) ));
+                $item = $this->renderGap();    
             }
-            elseif($args['options']['enable_cat_browsing'])
+            elseif($page->isStatic)
             {
-                $result = $wpdb->get_results( $wpdb->prepare( "
-                            		SELECT $wpdb->term_relationships.object_id as ID FROM $wpdb->term_relationships
-                                        LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = 8
-                                        LEFT JOIN $wpdb->posts ON wp_posts.ID = $wpdb->term_relationships.object_id
-                                        WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
-                                            AND (post_type = 'post'
-                                            AND post_parent = '0'
-                                            AND post_status = 'publish')
-                               		ORDER BY post_date DESC
-                                    LIMIT 1
-                                    OFFSET %d",
-                            		max(intval($page)-1, 0) ));
+                $item = $this->renderStaticLink($page, $position);    
             }
-            if(empty($result)) return FALSE;
-
-            // do only the ID lookup to let WP handle the filter internals etc.
-            $resultArray['id'] = $result[0]->ID;
-            $resultArray['title'] = get_the_title($result[0]->ID);
-            $resultArray['url'] = get_permalink($result[0]->ID);
-        }
-
-        // return the result
-        return $resultArray;
-    }
-
-    /**
-     * Gets the page index from the post index
-     * @var postIndex The post index
-     * @return The page index
-     */
-    function getPageIndexFromPostIndex($postIndex)
-    {
-        if(is_single()) return $postIndex;
-
-        $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
-        $postIndex = max($postIndex - 1, 0);
-        return intval($postIndex / $posts_per_page) + 1;
-    }
-
-    /**
-     * Gets the page index from a post ID
-     * @return int|bool The page index (1 based) or FALSE in case of an error
-     */
-    function getPageLinkFromPostId($postId, $postIndex = FALSE)
-    {
-        global $wpdb, $wp_query;
-
-        // lookup the post index if it is not already known
-        if(empty($postIndex) || intval($postIndex) < 1)
-        {
-            $result = $wpdb->get_results( $wpdb->prepare( "
-                        		SELECT COUNT(*) AS count
-                        		FROM $wpdb->posts
-                        		WHERE wp_posts.ID >= %d
-                        			AND (post_type = 'post'
-                        				AND post_parent = '0'
-                        				AND post_status = 'publish')
-                        		ORDER BY post_date DESC" ,
-                        		$postId ));
-            if(empty($result)) return FALSE;
-            $postIndex = $result[0]->count;
-        }
-
-        // return the value
-        return PaginationFuRenderer::getPageIndexFromPostIndex($postIndex);
-    }
-
-    /**
-     * Gets the post number for a given category name.
-     * @var post_count The number of posts in that category
-     * @var category_name string The category name
-     * @return The number of items or FALSE, in case of an error.
-     */
-    function getPageIdFromCategory($post_count = FALSE, $category_name = FALSE)
-    {
-        global $wpdb, $wp_query;
-
-        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
-        if(empty($category_name)) return FALSE;
-
-        // Get the number of posts
-        if(empty($post_count)) $post_count = PaginationFuRenderer::getPageCountFromCategory($category_name);
-
-        // Get the current post index
-        $query = "SELECT COUNT($wpdb->term_relationships.object_id) AS count FROM $wpdb->term_relationships
-                    LEFT JOIN $wpdb->terms ON $wpdb->terms.slug = %s
-                    LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
-                    WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
-                        AND $wpdb->term_relationships.object_id >= %d
-                    ORDER BY wp_term_relationships.object_id DESC;";
-        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name, $wp_query->post->ID ));
-
-        if(empty($result)) return FALSE;
-        $postIndex = $result[0]->count;
-
-        // calculate the page id
-        return PaginationFuRenderer::getPageIndexFromPostIndex($postIndex);
-    }
-
-    /**
-     * Gets the number of posts for a given category name.
-     * @var category_name string The category name
-     * @return The number of items or FALSE, in case of an error.
-     */
-    function getPageCountFromCategory($category_name = FALSE)
-    {
-        global $wpdb, $wp_query;
-
-        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
-        if(empty($category_name)) return FALSE;
-
-        $query = "SELECT COUNT($wpdb->term_relationships.object_id) AS count FROM $wpdb->term_relationships
-                    LEFT JOIN $wpdb->terms ON $wpdb->terms.slug = %s
-                    LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
-                    WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
-                    ORDER BY $wpdb->term_relationships.object_id DESC;";
-        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name ));
-
-        if(empty($result)) return FALSE;
-        return $result[0]->count;
-    }
-
-    /**
-     * Gets the category ID from the category name
-     * @var category_name string The category name
-     * @return The category id or FALSE in case of an error.
-     */
-    function getCategoryId($category_name = FALSE)
-    {
-        global $wpdb, $wp_query;
-
-        $cat_id = get_query_var('cat');
-        if(!empty($cat_id)) return $cat_id;
-
-        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
-        if(empty($category_name)) return FALSE;
-
-        $query = "SELECT $wpdb->term_taxonomy.term_taxonomy_id as id
-                    FROM $wpdb->term_taxonomy
-                    LEFT JOIN $wpdb->terms
-                        ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
-                    WHERE $wpdb->terms.slug = %s
-                    LIMIT 1;";
-        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name ));
-
-        if(empty($result)) return FALSE;
-        return $result[0]->id;
-    }
-}
-
-/**
- * A renderer for the page items.
- */
-class PaginationFuPageRenderer extends PaginationFuRenderer
-{
-    /**
-     * @var The opening tag for an active page link
-     */
-    var $openTagActive      = '<a class="page page-{page}{additional_classes}" href="{url}" title="{title}">';
-
-    /**
-     * @var The closing tag for an active page link
-     */
-    var $closeTagActive     = '</a>';
-
-    /**
-     * @var The opening tag for the current page
-     */
-    var $openTagCurrent      = '<span class="page page-{page} current{additional_classes}" title="{title}">';
-
-    /**
-     * @var The closing tag for the current page
-     */
-    var $closeTagCurrent     = '</span>';
-
-    /**
-     * Renders the item.
-     * @param value (mixed) The value to render. Might be a page number or a text.
-     * @param page int The target page
-     * @param is_current bool If set to true, this item represents the current page (e.g. should be considered disabled).
-     */
-    function render($value, $page, $is_current, $args)
-    {
-        $data = $this->lookupPageData($page, $args);
-
-        $url          = $data['url'];
-        $title        = $data['title'];
-
-        $openTag      = !$is_current ? $this->openTagActive : $this->openTagCurrent;
-        $closeTag     = !$is_current ? $this->closeTagActive : $this->closeTagCurrent;
-        $additionalClasses = '';
-
-        // special treatment for single pages
-        if(is_single() && $args['type'] == 'default')
-        {
-            global $PaginationFu, $wp_query;
-            if($is_current)
+            else 
             {
-                $pageId     = PaginationFuRenderer::getPageIdFromCategory();
-                if($args['options']['enable_cat_browsing'] && !empty($pageId))
-                {
-                    $cat_name = $wp_query->query['category_name'];
-                    $category = get_category_by_slug($cat_name);
-                    if(empty($category))
-                        $url  = trailingslashit(get_option('home')).'?category_name='.$cat_name.'&paged='.$pageId;
-                    else
-                        $url  = trailingslashit(get_option('home')).'cat='.$category->cat_ID.'&paged='.$pageId;
-
-                    // Filter the URL (i.e. for subdomain plug-ins, etc.)
-                    $url = apply_filters('get_pagenum_link', $url);
-                }
-                else
-                {
-                    $pageId = PaginationFuRenderer::getPageLinkFromPostId(0, $page);
-                    $url    = trailingslashit(get_option('home')).'?paged='.$pageId;
-                }
-
-                $openTag    = $this->openTagActive;
-                $closeTag   = $this->closeTagActive;
-
-                $title      = str_ireplace('{page}', $pageId, $PaginationFu->options['to_index_title']);
-
-                $additionalClasses = ' current linktoindex';
+                $item = $this->renderPage($page);
             }
+            
+            if(empty($item)) continue;
+            $list[] = $item;
         }
-
-        $searchArray  = array('{url}', '{title}', '{page}', '{additional_classes}');
-        $replacements = array( $url,    $title,    $page,    $additionalClasses);
-
-        $openTag      = str_ireplace($searchArray, $replacements, $openTag);
-        $closeTag     = str_ireplace($searchArray, $replacements, $closeTag);
-
-        return          $openTag . $value . $closeTag;
+        
+        return $list;
     }
 }
 
 /**
- * A renderer for the page items.
- */
-class PaginationFuLinkRenderer extends PaginationFuRenderer
-{
-    /**
-     * @var The opening tag for an active page link
-     */
-    var $openTagActive      = '<a class="{class} page-{page}" href="{url}" title="{title}">';
-
-    /**
-     * @var The closing tag for an active page link
-     */
-    var $closeTagActive     = '</a>';
-
-    /**
-     * @var The opening tag for the current page
-     */
-    var $openTagCurrent      = '<span class="{class} page-{page} current" title="{title}">';
-
-    /**
-     * @var The closing tag for the current page
-     */
-    var $closeTagCurrent     = '</span>';
-
-    /**
-     * Renders the item.
-     * @param value (mixed) The value to render. Might be a page number or a text.
-     * @param page int The target page
-     * @param class string The class to apply
-     * @param is_current bool If set to true, this item represents the current page (e.g. should be considered disabled).
-     */
-    function render($value, $page, $class, $is_current, $args)
-    {
-        $data = $this->lookupPageData($page, $args);
-        $url          = $data['url'];
-
-        $title = $value;
-        if(!empty($data['title'])) $title = $data['title'];
-
-        $openTag      = !$is_current ? $this->openTagActive : $this->openTagCurrent;
-        $closeTag     = !$is_current ? $this->closeTagActive : $this->closeTagCurrent;
-
-        $searchArray  = array('{url}', '{title}', '{page}', '{class}');
-        $replacements = array( $url,    $title,    $page,    $class);
-
-        $openTag      = str_ireplace($searchArray, $replacements, $openTag);
-        $closeTag     = str_ireplace($searchArray, $replacements, $closeTag);
-
-        return          $openTag . $value . $closeTag;
-    }
-}
-
-/**
- * A renderer for the ellipsis items.
- */
-class PaginationFuEllipsisRenderer extends PaginationFuRenderer
-{
-    /**
-     * @var The opening tag for the item
-     */
-    var $openTag      = '<span class="gap">';
-
-    /**
-     * @var The actual ellipsis
-     */
-    var $ellipsisTag  = '&#133;';
-
-    /**
-     * @var The closing tag for the item
-     */
-    var $closeTag     = '</span>';
-
-    /**
-     * Renders the item.
-     * @param value (mixed) The value to render. Might be a page number or a text.
-     * @param page int The target page
-     * @param is_current bool If set to true, this item represents the current page (e.g. should be considered disabled).
-     */
-    function render($unused = FALSE, $unused2 = FALSE, $unused3 = FALSE)
-    {
-        return $this->openTag . $this->ellipsisTag . $this->closeTag;
-    }
-}
-
-/**
- * Enumerator for the pages.
- * Generates the page list.
+ * Class that enumerates the pages.
  */
 class PaginationFuEnumerator
 {
     /**
-     * @var int The number of pages around the current page.
+     * @var array The arguments for the renderer
      */
-    var $pagesAroundCurrent = 3;
-
+    protected $arguments; 
+    
     /**
-     * @var int The number of pages at the start
+     * @var int The current page
      */
-    var $minPagesAtStart = 1;
-
+    protected $currentPage = 0;
+    
     /**
-     * @var int The number of pages at the end
+     * @var int The total number of pages
      */
-    var $minPagesAtEnd = 1;
-
+    protected $totalPages = 0;
+    
+    /**
+     * Contructor
+     * @param arguments array The arguments
+     */    
+    public function __construct(array &$arguments)
+    {
+        $this->arguments = $arguments; 
+    }    
+    
     /**
      * Gets the total number of items.
      * @return int The number of total items that will be generated.
      */
-    function getTotalItemCount()
+    public function getTotalItemCount()
     {
-        return (2*$this->pagesAroundCurrent) +    // range around current page
-                $this->minPagesAtStart +          // pages at the start
-                $this->minPagesAtEnd +            // pages at the end
-                1 +                               // the current page
-                2;                                // ellipses
-    }
-
+        return (2*$this->arguments['range_around_current']) + // range around current page
+                $this->arguments['min_pages_at_start'] +      // pages at the start
+                $this->arguments['min_pages_at_end'] +        // pages at the end
+                1 +                                           // the current page
+                2;                                            // ellipses
+    }    
+    
     /**
-     * Renders the page list as an array.
-     * @param page int The current page number
-     * @param pages int The count of all pages.
-     * @return array The array of items.
+     * Enumerates the pages in the given range.
+     * @param currentPage int The current page
+     * @param pageCount int The total number of pages
+     * @return array An array of PaginationFuEntity arrays or FALSE in case of an error.
      */
-    function renderItems($page, $pages, $args)
-    {
+    public function &enumeratePages($currentPage = 0, $pageCount = 0)
+    {       
+        // Get the page numbers
+        $data                   = $this->getCurrentPageAndPageCount($currentPage, $pageCount);              
+        if(empty($data)) return FALSE;
+        
+        $page                   = $data['page'];
+        $pages                  = $data['pages'];
+        
+        // get parameters for the enumeration
+        $minPagesAtStart        = $this->arguments['min_pages_at_start'];
+        $minPagesAtEnd          = $this->arguments['min_pages_at_end'];
+        $pagesAroundCurrent     = $this->arguments['range_around_current'];
+        
         // Generate left block
         $leftBlock = array (
             'start' => 1,
-            'end'   => $this->minPagesAtStart
+            'end'   => $minPagesAtStart
             );
 
         // Generate right block
         $rightBlockNeeded = TRUE;
         $rightBlock = array (
-            'start' => $pages - $this->minPagesAtEnd + 1,
+            'start' => $pages - $minPagesAtEnd + 1,
             'end'   => $pages
             );
 
         // Generate center block
         $centerBlockNeeded = TRUE;
         $centerBlock = array (
-            'start' => min($page - $this->pagesAroundCurrent, $rightBlock['start']),
-            'end'   => max($page + $this->pagesAroundCurrent, $leftBlock['end'])
+            'start' => min($page - $pagesAroundCurrent, $rightBlock['start']),
+            'end'   => max($page + $pagesAroundCurrent, $leftBlock['end'])
             );
 
         // Difference of the left block to the center block
@@ -576,52 +340,324 @@ class PaginationFuEnumerator
         // Determine if there is a right ellipsis required
         $needRightEllipsis = $rightBlock['start'] > $pages;
 
-        // Render the blocks
+        
+        // Prepare the array
         $items = array();
-        $this->renderRange($items, $leftBlock['start'], $leftBlock['end'], $page, $args);
+        $current = $error ? 0 : $page; // prevent highlighting a page
+        
+        // prev page
+        $previousPageId = max($page-1, 1);
+        $this->addStatic($items, $previousPageId, $page, 'prev');
+        
+        // Render the blocks
+        $this->enumerateRange($items, $leftBlock['start'], $leftBlock['end'], $current);
         if($centerBlockNeeded)
         {
-            $this->renderEllipsis($items);
-            $this->renderRange($items, $centerBlock['start'], $centerBlock['end'], $page, $args);
+            $this->addGap($items);
+            $this->enumerateRange($items, $centerBlock['start'], $centerBlock['end'], $current);
         }
         if($rightBlockNeeded)
         {
-            $this->renderEllipsis($items);
-            $this->renderRange($items, $rightBlock['start'], $rightBlock['end'], $page, $args);
+            $this->addGap($items);
+            $this->enumerateRange($items, $rightBlock['start'], $rightBlock['end'], $current);
         }
-        if($needRightEllipsis) $this->renderEllipsis($items);
+        
+        // prev page
+        $nextPageId = min($page+1, $pages);
+        $this->addStatic($items, $nextPageId, $page, 'next');
+        
+        // revert array if necessary
+        //TODO: Comment behavior
+        if($this->arguments['reverse_list']) 
+        {
+            $items = array_reverse($items);
+        }
+
+        // for debugging purposes only
+        
+        /*
+        $blocks = array (
+            'leftBlock' => array('used' => TRUE, 'data' => $leftBlock),
+            'centerBlock' => array('used' => $centerBlockNeeded, 'data' => $centerBlock),
+            'rightBlock' => array('used' => $rightBlockNeeded, 'data' => $rightBlock),
+            );
+        var_dump($blocks);
+        die("blocks");
+        */
 
         // Return the array
         return $items;
     }
-
+    
     /**
-     * Calls the renderer to render an ellipsis item
-     * @param items array The array of items to which the item will be attached.
+     * Attaches a gap to the item array
+     * @param items array The item array.
      */
-    function renderEllipsis(&$items)
+    private function addGap(&$items)
     {
-        global $PaginationFu;
-        $items[] = $PaginationFu->rendererEllipsis->render(FALSE, FALSE, FALSE);
+        $gap        = new PaginationFuEntity();
+        $gap->isGap = TRUE;
+        $items[]    = $gap;
     }
+    
+    /**
+     * Attaches a gap to the item array
+     * @param items array The item array.
+     */
+    private function addStatic(&$items, $index, $currentPage, $type = 'prev')
+    {
+        //TODO: Comment behavior
+        $name               = $type == 'prev' ? $this->arguments['translations']['html_newer'] : $this->arguments['translations']['html_older']; 
+        
+        $link               = &$this->generateEntity($index, FALSE);
+        $link->name         = $name; 
+        
+        $link->isCurrent    = $index == $currentPage;
+        $link->isStatic     = TRUE;
+        $link->staticType   = $type;
 
+        $items[]            = $link;
+    }    
+    
     /**
      * Renders a range of items (pages).
-     * @param items array The array of items to which the item will be attached.
+     * @param items array out The array of items to which the item will be attached.
+     * @param start int The start of the range
+     * @param end int The end of the range
+     * @param current int The current page
      */
-    function renderRange(&$items, $start, $end, $current, $args)
+    private function enumerateRange(&$items, $start, $end, $current)
     {
-        global $PaginationFu;
         if($start < 1 || $end < 1 || $start > $end || $end < $start) return;
         for($i=$start; $i<=$end; ++$i)
         {
             $is_current = ($i == $current);
-            $items[] = $PaginationFu->rendererPage->render($i, $i, $is_current, $args);
+            $items[] = &$this->generateEntity($i, $is_current);
         }
+    }
+    
+    /**
+     * Gets the total page count and the current page
+     * @param currentPage int The current page
+     * @param pageCount int The total number of pages
+     * @return array The page information or FALSE in case of an error
+     */
+    private function &getCurrentPageAndPageCount($currentPage = 0, $pageCount = 0)
+    {
+        global $wpdb, $wp_query;
+        
+        // Return the stored page numbers, if set
+        if(!empty($this->currentPage) && !empty($this->totalPages)) 
+        {
+            return array('page' => $this->currentPage, 'pages' => $this->totalPages);
+        }
+        
+        if(!empty($currentPage) && !empty($pageCount)) 
+        {           
+            // store the page numbers
+            $this->currentPage      = $currentPage;
+            $this->totalPages       = $pageCount;
+            
+            // return the array
+            return array('page' => $currentPage, 'pages' => $pageCount);
+        }
+        $page       = 0;
+        $pages      = 0;
+                
+        // Comment page behavior
+        if($this->arguments['type'] == 'comments')
+        {           
+            $page = get_query_var('cpage');
+        	$posts_per_page = get_option('comments_per_page');
+
+            // correct for nested comments
+            $result = $wpdb->get_results( $wpdb->prepare( "
+                        		SELECT COUNT(*) AS count
+                        		FROM $wpdb->comments
+                        		WHERE comment_post_ID >= %d 
+                                    AND comment_parent > 0 
+                                    AND comment_approved > 0" ,
+                        		$wp_query->post->ID ));
+            $difference = $result[0]->count;
+            $pages = intval(ceil(($wp_query->comment_count-$difference) / $posts_per_page));
+            $page = max(min($page, $pages), 1);
+
+            // do not render if there is only one page
+            if($pages <= 1 && !$this->arguments['options']['always_show_comments_pagination']) return FALSE;
+        }
+        // index/archive page behavior
+        elseif(is_home() || is_archive()) // || is_404()
+        {                       
+            // Get the current page
+            $page = get_query_var('paged');
+            $page = !empty($page) ? max(intval($page), 1) : 1;
+
+            // Get the total number of pages
+            $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
+            $pages = max(intval(ceil($wp_query->found_posts / $posts_per_page)), 1);
+            
+            // adjust for maximum page
+            $page = min($page, $pages);
+        }
+        elseif(is_single())
+        {                      
+            // are we coming from an archive?
+            if($this->arguments['options']['enable_cat_browsing'] && !empty($wp_query->query['category_name']))
+            {
+                user_error("Category browsing not implemented.", E_ERROR);
+                return FALSE;
+                //$pages  = PaginationFuRenderer::getPageCountFromCategory();
+                //$page   = PaginationFuRenderer::getPageIdFromCategory($pages);
+            }
+            else
+            {
+                //TODO: Was ist mit passwortgeschützten Seiten? Versteckten Seiten? Unveröffentlichten Seiten?
+                $result = $wpdb->get_results( $wpdb->prepare( "
+                            		SELECT COUNT(*) AS count
+                            		FROM $wpdb->posts
+                            		WHERE wp_posts.ID >= %d
+                            			AND (post_type = 'post'
+                            				AND post_parent = '0'
+                            				AND post_status = 'publish')
+                            		ORDER BY post_date DESC" ,
+                            		$wp_query->post->ID ));
+                $page = $result[0]->count;
+
+                //TODO: Es gibt garantiert die Anzahl der Posts in wp_query
+                var_dump($wp_query->found_posts);
+                $result = $wpdb->get_results("
+                            		SELECT COUNT(*) AS count
+                            		FROM $wpdb->posts
+                            		WHERE (post_type = 'post'
+                            				AND post_parent = '0'
+                            				AND post_status = 'publish')
+                            		ORDER BY post_date DESC");
+                $pages = $result[0]->count;
+            }
+        }
+        else
+        {
+            return FALSE;
+        }
+        
+        // store the page numbers
+        $this->currentPage      = $page;
+        $this->totalPages       = $pages;
+
+        // return the information
+        return array('page' => $page, 'pages' => $pages);
+    }     
+    
+    /**
+     * Generates a page entity
+     * @param index int The item's index
+     * @param isCurrent boolean Whether this is the current item
+     * @return &PaginationFuEntity The generated entity
+     */
+    private function &generateEntity($index, $isCurrent = FALSE)
+    {      
+        $pageId     = $this->translateStrideIndexToPageId($index);
+        $data       = &$this->getPageData($pageId);
+        $url        = $this->getUrl($pageId, $index, $data);
+        $name       = $this->generateName($pageId, $index, $data);
+        $title      = $name;
+        
+        // Create the entity
+        $entity = new PaginationFuEntity($pageId, $name, $url);
+        $entity->title          = $title;
+        $entity->isCurrent      = $isCurrent;
+        $entity->strideIndex    = $index;
+        
+        // Return the entity reference
+        return $entity;   
+    }
+    
+    /**
+     * Gets information about the page with the given ID (cached)
+     * @var pageId int The page ID
+     * @return Page information.
+     */
+    private function &getPageData($pageId)
+    {
+        $pageData = array();
+        
+        // Check the cache
+        $cached_result = wp_cache_get( 'posts:post-'.$pageId, $this->arguments['cacheGroup'] );
+        if(!empty($cached_result)) return $cached_result;
+        
+        // Get the information
+        if(is_single())
+        {
+            /*
+            $post = &get_post($pageId, 'OBJECT');
+            $pageData['post'] = &$post;
+        
+            var_dump($post);
+            */
+            die("Handling von single-Seiten nocht nicht implementiert.");
+        }
+        
+        // Save the page id. (it's pretty obvious, though)
+        $pageData['pageId'] = $pageId;
+        
+        // Cache the information and return the value
+        wp_cache_set( 'posts:post-'.$pageId, $pageData, $this->arguments['cacheGroup'] );
+        return $pageData;
+    }
+    
+    /**
+     * Translates the stride index to a page id
+     * @param index int The stride index
+     * @return int The page ID
+     **/
+    private function translateStrideIndexToPageId($index)
+    {
+        return $index;
+    }
+    
+    /**
+     * Generates a name for a given stride index
+     * @param pageId int The page id
+     * @param strideIndex int The stride index
+     * @param pageData The page data
+     * @return string The name
+     */
+    private function generateName($pageId, $strideIndex, &$pageData = NULL)
+    {
+        if($this->arguments['options']['do_title_lookup'] && 
+           (is_home() || is_archive()) && 
+           get_query_var('posts_per_page') == 1)
+        {
+            if(empty($pageData['title']))
+            {
+                $pageData['title'] = get_the_title($pageId);
+                var_dump($pageData);
+            }
+            
+            return $pageData['title'];
+        }
+        
+        // Use alternative title
+        $key = 'alternative_title';
+        if($this->arguments['type'] == 'comments') $key = 'comments_alternative_title';
+        $pageData['title'] = str_ireplace('{page}', $strideIndex, $this->arguments['translations'][$key]);
+        
+        return $pageData['title'];
+    }
+    
+    /**
+     * Gets an URL to the given page.
+     * @param pageId int The page number
+     * @return string The URL to the page
+     */
+    private function getUrl($pageId, $strideIndex, &$pageData = NULL)
+    {
+        if($this->arguments['type'] == 'comments') return get_comments_pagenum_link($pageId);
+        return get_pagenum_link(intval($pageId));
     }
 }
 
-if (!class_exists('PaginationFuClass')) {
+
 
 /**
  * The main class
@@ -631,67 +667,65 @@ class PaginationFuClass
     /**
      * @var string The plugin version.
      */
-    var $version = "1.0";
+    private $version = "1.0";
 
     /**
      * @var array The options
      */
-    var $options = array();
+    protected $configuration = array();
+    
+    /**
+     * @var string The cache key
+     */
+    protected $cacheGroup = 'PaginationFu';
 
     /**
      * @var array The default options
      */
-    var $defaultOptions = array(
-        'main_class'                => 'pagination-fu',
-        'main_comments_class'       => 'pagination-fu pagination-fu-comments',
-        'html_main_start'           => '<div class="{class}" role="navigation">',
-        'html_main_end'             => '</div>',
-        'html_list_start'           => '<ol class="{class}">',
-        'html_list_end'             => '</ol>',
-        'reverse_list'              => FALSE,
-        'reverse_comments_list'     => FALSE,
-        'html_right_icon'           => '&#160;&#187;',
-        'html_left_icon'            => '&#171;&#160;',
-        'html_older'                => 'older',
-        'html_newer'                => 'newer',
-        'html_comments_older'       => 'older',
-        'html_comments_newer'       => 'newer',
-        'always_show_navlinks'      => FALSE,
+    private $defaultConfiguration = array(
+        
+        // Options
+        'reverse_list'                  => FALSE,
+        'reverse_comments_list'         => FALSE,
+        'always_show_navlinks'          => FALSE,
         'always_show_comments_pagination'
-                                    => FALSE,
-        'enable_cat_browsing'       => FALSE,
-        'do_title_lookup'           => TRUE,
-        'alternative_title'         => 'Page {page}',
-        'comments_alternative_title'=> 'Comment page {page}',
-        'to_index_title'            => 'Back to index (page {page})',
+                                        => TRUE,
+        'enable_cat_browsing'           => FALSE,
+        'do_title_lookup'               => TRUE,
+        'embed_css'                     => TRUE,
 
-        'embed_css'                 => TRUE,
-                        );
-
-    /**
-     * @var PaginationFuEnumerator The enumerator object.
-     */
-    var $enumerator;
-
-    /**
-     * @var PaginationFuRenderer Renderer for navigation links.
-     */
-    var $rendererLinks;
-
-    /**
-     * @var PaginationFuRenderer Renderer for the ellipsis item.
-     */
-    var $rendererEllipsis;
-
-    /**
-     * @var PaginationFuRenderer Renderer for the page item.
-     */
-    var $rendererPage;
+        'min_pages_at_start'            => 1,
+        'min_pages_at_end'              => 1,
+        'range_around_current'          => 3,         
+        
+        // Tags
+        'tags' => array(
+            'main_class'                => 'pagination-fu',
+            'main_comments_class'       => 'pagination-fu pagination-fu-comments',
+            'html_main_start'           => '<div class="{class}" role="navigation">',
+            'html_main_end'             => '</div>',
+            'html_list_start'           => '<ol class="{class}">',
+            'html_list_end'             => '</ol>'
+            ),
+        
+        // Translations
+        'translations' => array(
+            'html_right_icon'           => '...',
+            'html_left_icon'            => '...',
+            'html_older'                => '...',
+            'html_newer'                => '...',
+            'html_comments_older'       => '...',
+            'html_comments_newer'       => '...',
+            'alternative_title'         => '...',
+            'comments_alternative_title'=> '...',
+            'to_index_title'            => '...'
+            )
+        );
 
     /**
      * PHP4 style constructor
      */
-    function PaginationFu()
+    public function PaginationFu()
     {
         $this->__construct();
     }
@@ -699,7 +733,7 @@ class PaginationFuClass
     /**
      * PHP5 style constructor
      */
-    function __construct()
+    public function __construct()
     {
         // Pump up the volume
         add_action('init', array(&$this, 'init'), 1000 );
@@ -709,43 +743,49 @@ class PaginationFuClass
     }
 
     /**
+     * Translates the default strings
+     */
+    private function initApplyTranslations()
+    {
+        // translate default options
+        $this->defaultConfiguration['translations']['html_right_icon']      = __('&#160;&#187;', 'pagination_fu');
+        $this->defaultConfiguration['translations']['html_left_icon']       = __('&#171;&#160;', 'pagination_fu');
+        $this->defaultConfiguration['translations']['html_older']           = __('older', 'pagination_fu');
+        $this->defaultConfiguration['translations']['html_newer']           = __('newer', 'pagination_fu');
+        $this->defaultConfiguration['translations']['html_comments_older']  = __('older', 'pagination_fu');
+        $this->defaultConfiguration['translations']['html_comments_newer']  = __('newer', 'pagination_fu');
+        $this->defaultConfiguration['translations']['alternative_title']    = __('Page {page}', 'pagination_fu');
+        $this->defaultConfiguration['translations']['comments_alternative_title']
+                                                                            = __('Comment page {page}', 'pagination_fu');
+        $this->defaultConfiguration['translations']['to_index_title']       = __('Back to index (page {page})', 'pagination_fu');        
+    }
+
+    /**
      * Initializes the plugin
      */
-    function init()
+    public function init()
     {
         load_plugin_textdomain('pagination_fu');
 
-        // translate default options
-        $this->defaultOptions['html_older']         = __('older', 'pagination_fu');
-        $this->defaultOptions['html_newer']         = __('newer', 'pagination_fu');
-        $this->defaultOptions['html_comments_older']
-                                                    = __('older', 'pagination_fu');
-        $this->defaultOptions['html_comments_newer']
-                                                    = __('newer', 'pagination_fu');
-        $this->defaultOptions['alternative_title']  = __('Page {page}', 'pagination_fu');
-        $this->defaultOptions['comments_alternative_title']
-                                                    = __('Comment page {page}', 'pagination_fu');
-        $this->defaultOptions['to_index_title']     = __('Back to index (page {page})', 'pagination_fu');
+        // Translate the default strings
+        $this->initApplyTranslations();
 
         // load options
-        $options = get_option('pagination_fu_options', $defaultOptions);
+        $options = get_option('pagination_fu_options', $this->defaultConfiguration);
         if(!empty($options))
         {
-            $this->options = array_merge($this->defaultOptions, $options);
+            $this->configuration = array_merge($this->defaultConfiguration, $options);
         }
         else
         {
-            $this->options = $this->defaultOptions;
+            $this->configuration = $this->defaultConfiguration;
         }
+        
+        // Add this instance to the options
+        $this->configuration['PaginationFu'] = &$this;
 
         // embed css
-        if ($this->options['embed_css']) add_action('wp_print_styles', array(&$this, 'embedCSS'));
-
-        // Create a new enumerator
-        $this->enumerator       = new PaginationFuEnumerator();
-
-        // create default renderers
-        $this->createDefaultRenderers();
+        if ($this->configuration['embed_css']) add_action('wp_print_styles', array(&$this, 'embedCSS'));
     }
 
     /**
@@ -753,52 +793,37 @@ class PaginationFuClass
      * @var userOptions array Array of user options
      * @return The combined options
      */
-    function getCallOptions($userOptions = FALSE)
+    private function getCallArguments($userArguments = FALSE)
     {
-        $defaultOptions = array(
-            'type'      => 'default',
-            'cacheKey'  => 'paginationFu'
+        $defaultArguments = array(
+            'type'          => 'default'
             );
 
         // Merge the options
-        if(empty($userOptions) || !is_array($userOptions)) return $defaultOptions;
-        $userOptions = array_merge($defaultOptions, $userOptions);
-
-        // Merge class options
-        if(!empty($userOptions['options']))
+        if(!empty($userArguments) && is_array($userArguments))
         {
-            $userOptions['options'] = array_merge($this->options, $userOptions['options']);
+            $userArguments = array_merge($this->configuration, array_merge($defaultArguments, $userArguments));
         }
-        else
-        {
-            $userOptions['options'] = $this->options;
+        else {
+            $userArguments = array_merge($this->configuration, $defaultArguments);
         }
 
         // Sanitize type
-        if($userOptions['type'] != 'default' && $userOptions['type'] != 'comments') $userOptions['type'] = 'default';
+        if($userArguments['type'] != 'default' && $userArguments['type'] != 'comments') $userArguments['type'] = 'default';
 
         // Generate cache key
-        if($userOptions['type'] == 'comments') $userOptions['cacheKey'] = 'paginationFu-comments';
+        if($userArguments['type'] == 'comments') $userArguments['cacheKey'] = 'paginationFu-comments';
+        else $userArguments['cacheKey'] = 'paginationFu';
+        $userArguments['cacheGroup'] = $this->cacheGroup;
 
         // Return the options
-        return $userOptions;
-    }
-
-    /**
-     * Creates the default renderers
-     */
-
-    function createDefaultRenderers()
-    {
-        $this->rendererLinks    = new PaginationFuLinkRenderer();
-        $this->rendererEllipsis = new PaginationFuEllipsisRenderer();
-        $this->rendererPage     = new PaginationFuPageRenderer();
+        return $userArguments;
     }
 
     /**
      * Loads the CSS stylesheet
      */
-    function embedCSS()
+    public function embedCSS()
     {
         $file = WP_PLUGIN_URL.'/'.dirname(plugin_basename(__FILE__)).'/pagination-fu.css';
 
@@ -814,7 +839,7 @@ class PaginationFuClass
     /**
      * Outputs the rendered pagination
      */
-    function render($args = FALSE)
+    public function render($args = FALSE)
     {
         echo $this->getRendered($args);
     }
@@ -822,7 +847,7 @@ class PaginationFuClass
     /**
      * Renders the pagination
      */
-    function getRendered($args = FALSE)
+    public function getRendered($args = FALSE)
     {
         // Unterscheidung zwischen:
         //  Index
@@ -831,173 +856,54 @@ class PaginationFuClass
         //  Kommentar
 
         // Get call arguments
-        $args       = $this->getCallOptions($args);
+        $args       = $this->getCallArguments($args);
+
 
         // Get some values
         $type       = $args['type'];
         $cacheKey   = $args['cacheKey'];
 
         // Check cache
-        $cached_result = wp_cache_get( $cacheKey, 'PaginationFu' );
+        $cached_result = wp_cache_get( $cacheKey, $this->cacheGroup );
         if(!empty($cached_result)) return $cached_result;
 
         // check for comments mode and leave if necessary
         if($type == 'comments' && !get_option('page_comments')) return FALSE;
+        
+        if($type == 'comments') return "Kommentar-Rendern ist aus Testgründen deaktiviert.";
 
-        // Get the page infos
-        $pageInfos = $this->getCurrentPageAndTotalPages($args);
-        if($pageInfos === FALSE) return FALSE;
-
-        // Extract information
-        $page = $pageInfos['page'];
-        $pages = $pageInfos['pages'];
-
-        // Next/prev pages
-        $previousPage = max(1, $page-1);
-        $nextPage = min($page+1, $pages);
-
-        // next and prev text
-        $is_reverse = ($type == 'comments') ? $this->options['reverse_comments_list'] : $this->options['reverse_list'];
-
-        if($type == 'comments')
-        {
-            $prev_text = $is_reverse ? ($this->options['html_comments_older'].$this->options['html_right_icon']) : ($this->options['html_left_icon'].$this->options['html_comments_older']);
-            $next_text = $is_reverse ? ($this->options['html_left_icon'].$this->options['html_comments_newer']) : ($this->options['html_comments_newer'].$this->options['html_right_icon']);
-        }
-        else
-        {
-            $prev_text = $is_reverse ? ($this->options['html_newer'].$this->options['html_right_icon']) : ($this->options['html_left_icon'].$this->options['html_newer']);
-            $next_text = $is_reverse ? ($this->options['html_left_icon'].$this->options['html_older']) : ($this->options['html_older'].$this->options['html_right_icon']);
-        }
-
-        // Generate link array
-        $items = $this->enumerator->renderItems($page, $pages, $args);
-
-        // Create the list items
-        $listItems = array();
-
-        // embed "previous" link
-        if($page > 1 || $this->options['always_show_navlinks'])
-        {
-            $listItems[] = '<li>'.$this->rendererLinks->render($prev_text, $previousPage, "prev newer", $page == 1, $args).'</li>';
-        }
-
-        // add page items
-        foreach($items as $item)
-        {
-            $listItems[] = "<li>$item</li>";
-        }
-
-        // embed "next" link
-        if($page < $pages || $this->options['always_show_navlinks'])
-        {
-            $listItems[] = '<li>'.$this->rendererLinks->render($next_text, $nextPage, "next older", $page == $pages, $args).'</li>';
-        }
-
-        // revert the list if necessary
-        if($is_reverse) $listItems = array_reverse($listItems);
-        $class    = $this->options['main_class'];
-        if($type == 'comments') $class = $this->options['main_comments_class'];
-        $content  = str_ireplace('{class}', $class, $this->options['html_main_start']);
-        $content .= str_ireplace('{class}', $class, $this->options['html_list_start']);
-        $content .= implode('', $listItems);
+        // Generate the content
+        $enumerator = new PaginationFuEnumerator($args);
+        $pages      = $enumerator->enumeratePages();
+        if(empty($pages)) return FALSE;
+        
+        // Render the content
+        $renderer   = new PaginationFuRenderer($args);
+        $list       = $renderer->render($pages);
+        if(empty($list)) return FALSE;
+        
+        // Create the list
+        $class    = $this->configuration['tags']['main_class'];
+        if($type == 'comments') $class = $this->configuration['tags']['main_comments_class'];
+        $content  = str_ireplace('{class}', $class, $this->configuration['tags']['html_main_start']);
+        $content .= str_ireplace('{class}', $class, $this->configuration['tags']['html_list_start']);
+        $content .= implode('', $list);
         $content .= $this->options['html_list_end'];
         $content .= $this->options['html_main_end']."\n";
 
         // Apply filters and return
-        $filtered_content = apply_filters('render_pagination_fu', $content);
+        $filtered_content = apply_filters('pagination_fu', $content);
 
         // add to chache
-        wp_cache_set( $cacheKey, $filtered_content, 'PaginationFu' );
+        wp_cache_set( $cacheKey, $filtered_content, $this->cacheGroup );
         return $filtered_content;
     }
 
-    /**
-     * Gets the current page and the total page number
-     * @return array|bool The page information or FALSE in case of an error
-     */
-    function getCurrentPageAndTotalPages($args)
-    {
-        global $wp_query, $wpdb;
-
-        $page = 0;
-        $pages = 0;
-
-        if($args['type'] == 'comments')
-        {
-            $page = get_query_var('cpage');
-        	$posts_per_page = get_option('comments_per_page');
-
-            // correct for nested comments
-            $result = $wpdb->get_results( $wpdb->prepare( "
-                        		SELECT COUNT(*) AS count
-                        		FROM $wpdb->comments
-                        		WHERE comment_post_ID >= %d
-                        			AND (comment_parent > 0
-                        				AND comment_approved > 0)" ,
-                        		$wp_query->post->ID ));
-            $difference = $result[0]->count;
-            $pages = intval(ceil(($wp_query->comment_count-$difference) / $posts_per_page));
-            $page = max(min($page, $pages), 1);
-
-            // do not render if there is only one page
-            if($pages == 1 && !$this->options['always_show_comments_pagination']) return FALSE;
-        }
-        elseif(is_home() || is_archive())
-        {
-            // Get the current page
-            $page = get_query_var('paged');
-            $page = !empty($page) ? max(intval($page), 1) : 1;
-
-            // Get the total number of pages
-            $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
-            $pages = max(intval(ceil($wp_query->found_posts / $posts_per_page)), 1);
-        }
-        elseif(is_single())
-        {
-            // are we coming from an archive?
-            if($this->options['enable_cat_browsing'] && !empty($wp_query->query['category_name']))
-            {
-                $pages  = PaginationFuRenderer::getPageCountFromCategory();
-                $page   = PaginationFuRenderer::getPageIdFromCategory($pages);
-            }
-            else
-            {
-                // TODO: Was ist mit passwortgeschützten Seiten? Versteckten Seiten? Unveröffentlichten Seiten?
-                $result = $wpdb->get_results( $wpdb->prepare( "
-                            		SELECT COUNT(*) AS count
-                            		FROM $wpdb->posts
-                            		WHERE wp_posts.ID >= %d
-                            			AND (post_type = 'post'
-                            				AND post_parent = '0'
-                            				AND post_status = 'publish')
-                            		ORDER BY post_date DESC" ,
-                            		$wp_query->post->ID ));
-                $page = $result[0]->count;
-
-                $result = $wpdb->get_results("
-                            		SELECT COUNT(*) AS count
-                            		FROM $wpdb->posts
-                            		WHERE (post_type = 'post'
-                            				AND post_parent = '0'
-                            				AND post_status = 'publish')
-                            		ORDER BY post_date DESC");
-                $pages = $result[0]->count;
-            }
-        }
-        else
-        {
-            return FALSE;
-        }
-
-        // return the information
-        return array('page' => $page, 'pages' => $pages);
-    }
 
     /**
     * Adds a settings link to the plugin page
     */
-    function filterPluginActions($links, $file)
+    public function filterPluginActions($links, $file)
     {
         $settings_link = '<a href="options-general.php?page=' . plugin_basename(__FILE__) . '">' . __('Settings', 'propimgscale') . '</a>';
         array_unshift($links, $settings_link); // before other links
@@ -1007,7 +913,7 @@ class PaginationFuClass
     /**
     * Registers the options page
     */
-    function registerOptionsPage()
+    public function registerOptionsPage()
     {
         if ( function_exists('add_options_page') )
         {
@@ -1018,7 +924,7 @@ class PaginationFuClass
     /**
     * Renders the options page
     */
-    function renderOptionsPage()
+    public function renderOptionsPage()
     {
         $options = get_option('pagination_fu_options');
 
@@ -1044,8 +950,6 @@ class PaginationFuClass
     }
 
 }
-
-} // class exists
 
 $PaginationFu = new PaginationFuClass();
 
