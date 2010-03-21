@@ -537,12 +537,10 @@ class PaginationFuEnumerator
         elseif(is_single())
         {                      
             // are we coming from an archive?
-            if($this->arguments['options']['enable_cat_browsing'] && !empty($wp_query->query['category_name']))
+            if($this->arguments['enable_cat_browsing'] && !empty($wp_query->query['category_name']))
             {
-                user_error("Category browsing not implemented.", E_ERROR);
-                return FALSE;
-                //$pages  = PaginationFuRenderer::getPageCountFromCategory();
-                //$page   = PaginationFuRenderer::getPageIdFromCategory($pages);
+                $pages  = $this->getPageCountFromCategory();
+                $page   = $this->getPageIdFromCategory($pages);
             }
             else
             {
@@ -1010,7 +1008,7 @@ class PaginationFuClass
         'always_show_comments_pagination'
                                         => TRUE,
         'enable_index_backlink'         => TRUE,
-        'enable_cat_browsing'           => FALSE,
+        'enable_cat_browsing'           => TRUE,
         'do_title_lookup'               => TRUE,
         'embed_css'                     => TRUE,
         'enable_rel_prefetch'           => TRUE,
