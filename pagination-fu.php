@@ -75,6 +75,11 @@ class PaginationFuEntity
     public $url;
     
     /**
+     * @var The link relation
+     */
+    public $relation = NULL;
+    
+    /**
      * @var url boolean Determines whether this instance represents the current page
      */
     public $isCurrent = FALSE;
@@ -105,16 +110,32 @@ class PaginationFuRenderer
     }
     
     /**
+     * Gets the rel tag
+     */
+    private function getRelTag($page)
+    {
+        if(empty($page->relation)) return NULL;
+        $rel = $page->relation;
+        if($this->arguments['enable_rel_prefetch'])
+        {
+            if(stristr($rel, 'first') !== FALSE || stristr($rel, 'prev') || stristr($rel, 'next')) $rel .= ' prefetch';
+        }
+        return ' rel="'.$rel.'"';
+    }
+    
+    /**
      * Renders a page element ([1][2][3])
      * @param page PaginationFuEntity The entity to be rendered.
      * @return string A string representing the page elment
      */
     protected function renderPage($page)
     {
+        $rel = $this->getRelTag($page);
+        
         if($page->isCurrent)
             $element = '<span class="page page-'.$page->strideIndex.' current" title="'.$page->title.'">'.$page->strideIndex.'</span>';
         else
-            $element = '<a class="page page-'.$page->strideIndex.'" href="'.$page->url.'" title="'.$page->title.'">'.$page->strideIndex.'</a>';
+            $element = '<a class="page page-'.$page->strideIndex.'" href="'.$page->url.'" title="'.$page->title.'"'.$rel.'>'.$page->strideIndex.'</a>';
 
         $tag = '<li>'.$element.'</li>';
         return $tag;   
@@ -156,11 +177,14 @@ class PaginationFuRenderer
             $name = $page->name;
         }
         
+        // relation
+        $rel = $this->getRelTag($page);
+        
         // render
         if($page->isCurrent)
             $element = '<span class="page-'.$page->strideIndex.' current '.$class.'" title="'.$page->title.'">'.$name.'</span>';
         else
-            $element = '<a class="page-'.$page->strideIndex.' '.$class.'" href="'.$page->url.'" title="'.$page->title.'">'.$name.'</a>';
+            $element = '<a class="page-'.$page->strideIndex.' '.$class.'"'.$rel.' href="'.$page->url.'" title="'.$page->title.'">'.$name.'</a>';
 
         $tag = '<li>'.$element.'</li>';
         return $tag; 
@@ -415,6 +439,7 @@ class PaginationFuEnumerator
         $link->isCurrent    = $index == $currentPage;
         $link->isStatic     = TRUE;
         $link->staticType   = $type;
+        $link->relation     = $type == 'prev' ? 'prev' : ($type == 'next' ? 'next' : NULL);
 
         $items[]            = $link;
     }    
@@ -567,6 +592,15 @@ class PaginationFuEnumerator
         $entity->title          = $title;
         $entity->isCurrent      = $isCurrent;
         $entity->strideIndex    = $index;
+        $entity->relation       = $index == 1 ? "first" : 
+                                    ($index == $this->totalPages ? 'last' : 
+                                    ($index == $this->currentPage -1 ? 'prev' :
+                                    ($index == $this->currentPage +1 ? 'next' :
+                                    NULL)));
+                                    
+        // edges
+        if($index == 1 && $index == $this->currentPage-1) $entity->relation = "first prev";
+        elseif($index == $this->totalPages && $index == $this->currentPage+1) $entity->relation = "last next";
         
         // Return the entity reference
         $this->cachePageData($data, $pageId);
@@ -683,14 +717,31 @@ class PaginationFuEnumerator
      */
     private function generateName($pageId, $strideIndex, &$pageData = NULL)
     {
-        if($this->arguments['options']['do_title_lookup'] && 
+        // try the cache first
+        if(!empty($pageData['title'])) return $pageData['title']; 
+        
+        if($this->arguments['do_title_lookup'] && 
            (is_home() || is_archive()) && 
            get_query_var('posts_per_page') == 1)
+        {                                  
+            // query the post
+            //TODO: We should find something more sophisticated here. Loading every post probably isn't the best option. 
+            $query = new WP_Query();
+            $query->query('showposts=1'.'&paged='.intval($strideIndex));
+    
+            // if there is a post, return it's title
+            if(!empty($query->post))
+            {
+                $pageData['post'] = $query->post; // in case we need it
+                $pageData['title'] = $query->post->post_title;
+                return $pageData['title'];
+            }
+        }
+        elseif(is_single())
         {
             if(empty($pageData['title']))
             {
                 $pageData['title'] = get_the_title($pageId);
-                var_dump($pageData);
             }
             
             return $pageData['title'];
@@ -707,14 +758,54 @@ class PaginationFuEnumerator
     /**
      * Gets an URL to the given page.
      * @param pageId int The page number
+     * @param strideIndex The running index in the page loop
+     * @param pageData The local cache
      * @return string The URL to the page
      */
     protected function getUrl($pageId, $strideIndex, &$pageData = NULL)
-    {       
-        if($this->arguments['type'] == 'comments') return get_comments_pagenum_link($pageId);
+    {              
+        // try the cache first
+        if(!empty($pageData['url'])) return $pageData['url'];
+               
+        // try to generate an index backlink
+        $url = FALSE;
+        if($strideIndex == $this->currentPage) 
+        {
+            $url = $this->generateIndexBacklink($pageId, $strideIndex, $pageData);
+            $pageData['backlink'] = $url;
+        }
         
-        if(is_single()) return get_permalink($pageId);
-        return get_pagenum_link(intval($pageId));
+        // Generate a normal url
+        if($url === FALSE)
+        {
+            if($this->arguments['type'] == 'comments')
+            {
+                $url = get_comments_pagenum_link($pageId);  
+            } 
+            elseif(is_single()) 
+            {
+                $url = get_permalink($pageId);   
+            }
+            else 
+            {
+                $url = get_pagenum_link(intval($pageId));
+            }
+        }
+        if($url !== FALSE) $pageData['url'] = $url;
+        
+        return $url;
+    }
+    
+    /**
+     * Generates a backlink to the index
+     * @param pageId int The page number
+     * @param strideIndex The running index in the page loop
+     * @param pageData The local cache
+     * @return string The URL to the page
+     */
+    private function generateIndexBacklink($pageId, $strideIndex, &$pageData = NULL)
+    {
+        return FALSE;
     }
     
     /**
@@ -878,6 +969,7 @@ class PaginationFuClass
         'enable_cat_browsing'           => FALSE,
         'do_title_lookup'               => TRUE,
         'embed_css'                     => TRUE,
+        'enable_rel_prefetch'           => TRUE,
 
         'min_pages_at_start'            => 1,
         'min_pages_at_end'              => 1,
