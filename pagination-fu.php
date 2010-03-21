@@ -176,11 +176,11 @@ class PaginationFuRenderer
         $class  = $page->staticType;
         if($position < 0)
         {
-            $name = $this->arguments['tags']['html_left_icon'].$page->name;
+            $name = $this->arguments['translations']['html_left_icon'].$page->name;
         }
         elseif($position > 0)
         {
-            $name = $page->name.$this->arguments['tags']['html_right_icon'];
+            $name = $page->name.$this->arguments['translations']['html_right_icon'];
         }  
         else 
         {
