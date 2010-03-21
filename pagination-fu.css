@@ -6,6 +6,7 @@ ol.pagination-fu {
 ol.pagination-fu li {
     display: inline;
     list-style:none;
+    position: relative;
 }
 ol.pagination-fu a {
     background: #ddd;
@@ -45,8 +46,9 @@ ol.pagination-fu span.page.current {
 }
 ol.pagination-fu .page.linktoindex {
     /*background: #5f87ae;*/
-    background: #60AE87
+    background: #60AE87;
 }
+
 ol.pagination-fu .next.current, .prev.current {
     color: #aaa;
     background: #ddd;

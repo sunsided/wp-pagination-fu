@@ -1012,7 +1012,7 @@ class PaginationFuClass
         'always_show_comments_pagination'
                                         => TRUE,
         'enable_index_backlink'         => TRUE,
-        'enable_cat_browsing'           => TRUE,
+        'enable_cat_browsing'           => FALSE,
         'do_title_lookup'               => TRUE,
         'embed_css'                     => TRUE,
         'enable_rel_prefetch'           => TRUE,
