@@ -557,7 +557,7 @@ class PaginationFuEnumerator
     private function &generateEntity($index, $isCurrent = FALSE)
     {      
         $pageId     = $this->translateStrideIndexToPageId($index);
-        $data       = &$this->getPageData($pageId);
+        $data       = &$this->getPageData($pageId, $index);
         $url        = $this->getUrl($pageId, $index, $data);
         $name       = $this->generateName($pageId, $index, $data);
         $title      = $name;
@@ -569,6 +569,7 @@ class PaginationFuEnumerator
         $entity->strideIndex    = $index;
         
         // Return the entity reference
+        $this->cachePageData($data, $pageId);
         return $entity;   
     }
     
@@ -577,7 +578,7 @@ class PaginationFuEnumerator
      * @var pageId int The page ID
      * @return Page information.
      */
-    private function &getPageData($pageId)
+    private function &getPageData($pageId, $index)
     {
         $pageData = array();
         
@@ -585,24 +586,34 @@ class PaginationFuEnumerator
         $cached_result = wp_cache_get( 'posts:post-'.$pageId, $this->arguments['cacheGroup'] );
         if(!empty($cached_result)) return $cached_result;
         
-        // Get the information
-        if(is_single())
-        {
-            /*
-            $post = &get_post($pageId, 'OBJECT');
-            $pageData['post'] = &$post;
-        
-            var_dump($post);
-            */
-            die("Handling von single-Seiten nocht nicht implementiert.");
-        }
-        
         // Save the page id. (it's pretty obvious, though)
         $pageData['pageId'] = $pageId;
+        $pageData['strideIndex'] = $index;
+        
+        // cache the stride index
+        wp_cache_set( 'posts:stride-'.$index, $pageId, $this->arguments['cacheGroup'] );
+        
+        // Cache the information and return the value
+        $this->cachePageData($pageData, $pageId);
+        return $pageData;
+    }
+    
+    /**
+     * Caches the page data
+     * @param pageData the data to cache
+     * @param pageId The pages' id
+     */
+    protected function cachePageData(&$pageData, $pageId = 0)
+    {
+        if($pageId == 0)
+        {
+            if(empty($pageData['id'])) return FALSE;
+            $pageId = $pageData['id'];
+        }
         
         // Cache the information and return the value
         wp_cache_set( 'posts:post-'.$pageId, $pageData, $this->arguments['cacheGroup'] );
-        return $pageData;
+        return TRUE;
     }
     
     /**
@@ -612,6 +623,54 @@ class PaginationFuEnumerator
      **/
     private function translateStrideIndexToPageId($index)
     {
+        global $wpdb;
+        
+        // try to get the index from the cache
+        $cached_result = wp_cache_get( 'posts:stride-'.$index, $this->arguments['cacheGroup'] );
+        if(!empty($cached_result)) return $cached_result;
+        
+        // Get the information
+        if(is_single())
+        {
+            // check for category
+            $category_id = $this->getCategoryId();
+            $parent_category = empty($category_id) ? FALSE : $category_id;
+
+            // Get the pages
+            if($parent_category === FALSE || !$this->arguments['enable_cat_browsing'])
+            {
+                $result = $wpdb->get_results( $wpdb->prepare( "
+                            		SELECT wp_posts.ID
+                            		FROM $wpdb->posts
+                            		WHERE (post_type = 'post'
+                            				AND post_parent = '0'
+                            				AND post_status = 'publish')
+                            		ORDER BY post_date DESC
+                                    LIMIT 1
+                                    OFFSET %d" ,
+                            		max(intval($index)-1, 0) ));
+            }
+            elseif($this->arguments['enable_cat_browsing'])
+            {
+                $result = $wpdb->get_results( $wpdb->prepare( "
+                            		SELECT $wpdb->term_relationships.object_id as ID FROM $wpdb->term_relationships
+                                        LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = 8
+                                        LEFT JOIN $wpdb->posts ON wp_posts.ID = $wpdb->term_relationships.object_id
+                                        WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
+                                            AND (post_type = 'post'
+                                            AND post_parent = '0'
+                                            AND post_status = 'publish')
+                               		ORDER BY post_date DESC
+                                    LIMIT 1
+                                    OFFSET %d",
+                            		max(intval($index)-1, 0) ));
+            }
+            if(empty($result)) return FALSE;
+            
+            // do only the ID lookup to let WP handle the filter internals etc.
+            return $result[0]->ID;
+        }
+        
         return $index;
     }
     
@@ -650,10 +709,136 @@ class PaginationFuEnumerator
      * @param pageId int The page number
      * @return string The URL to the page
      */
-    private function getUrl($pageId, $strideIndex, &$pageData = NULL)
-    {
+    protected function getUrl($pageId, $strideIndex, &$pageData = NULL)
+    {       
         if($this->arguments['type'] == 'comments') return get_comments_pagenum_link($pageId);
+        
+        if(is_single()) return get_permalink($pageId);
         return get_pagenum_link(intval($pageId));
+    }
+    
+    /**
+     * Gets the page index from the post index
+     * @var postIndex The post index
+     * @return The page index
+     */
+    protected function getPageIndexFromPostIndex($postIndex)
+    {
+        if(is_single()) return $postIndex;
+
+        $posts_per_page = max(intval(get_query_var('posts_per_page')), 1);
+        $postIndex = max($postIndex - 1, 0);
+        return intval($postIndex / $posts_per_page) + 1;
+    }
+    
+    /**
+     * Gets the category ID from the category name
+     * @var category_name string The category name
+     * @return The category id or FALSE in case of an error.
+     */
+    protected function getCategoryId($category_name = FALSE)
+    {
+        global $wpdb, $wp_query;
+
+        $cat_id = get_query_var('cat');
+        if(!empty($cat_id)) return $cat_id;
+
+        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
+        if(empty($category_name)) return FALSE;
+
+        $query = "SELECT $wpdb->term_taxonomy.term_taxonomy_id as id
+                    FROM $wpdb->term_taxonomy
+                    LEFT JOIN $wpdb->terms
+                        ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
+                    WHERE $wpdb->terms.slug = %s
+                    LIMIT 1;";
+        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name ));
+
+        if(empty($result)) return FALSE;
+        return $result[0]->id;
+    }
+    
+    /**
+     * Gets the page index from a post ID
+     * @return int|bool The page index (1 based) or FALSE in case of an error
+     */
+    protected function getPageIdFromPostId($postId, $postIndex = FALSE)
+    {
+        global $wpdb, $wp_query;
+
+        // lookup the post index if it is not already known
+        if(empty($postIndex) || intval($postIndex) < 1)
+        {
+            $result = $wpdb->get_results( $wpdb->prepare( "
+                        		SELECT COUNT(*) AS count
+                        		FROM $wpdb->posts
+                        		WHERE wp_posts.ID >= %d
+                        			AND (post_type = 'post'
+                        				AND post_parent = '0'
+                        				AND post_status = 'publish')
+                        		ORDER BY post_date DESC" ,
+                        		$postId ));
+            if(empty($result)) return FALSE;
+            $postIndex = $result[0]->count;
+        }
+
+        // return the value
+        return $this->getPageIndexFromPostIndex($postIndex);
+    }
+    
+    /**
+     * Gets the post number for a given category name.
+     * @var post_count The number of posts in that category
+     * @var category_name string The category name
+     * @return The number of items or FALSE, in case of an error.
+     */
+    protected function getPageIdFromCategory($post_count = FALSE, $category_name = FALSE)
+    {
+        global $wpdb, $wp_query;
+
+        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
+        if(empty($category_name)) return FALSE;
+
+        // Get the number of posts
+        if(empty($post_count)) $post_count = $this->getPageCountFromCategory($category_name);
+
+        // Get the current post index
+        $query = "SELECT COUNT($wpdb->term_relationships.object_id) AS count FROM $wpdb->term_relationships
+                    LEFT JOIN $wpdb->terms ON $wpdb->terms.slug = %s
+                    LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
+                    WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
+                        AND $wpdb->term_relationships.object_id >= %d
+                    ORDER BY $wpdb->term_relationships.object_id DESC;";
+        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name, $wp_query->post->ID ));
+
+        if(empty($result)) return FALSE;
+        $postIndex = $result[0]->count;
+
+        // calculate the page id
+        return $this->getPageIndexFromPostIndex($postIndex);
+    }
+    
+    /**
+     * Gets the number of posts for a given category name.
+     * @var category_name string The category name
+     * @return The number of items or FALSE, in case of an error.
+     */
+    protected function getPageCountFromCategory($category_name = FALSE)
+    {
+        global $wpdb, $wp_query;
+
+        if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
+        if(empty($category_name)) return FALSE;
+
+        $query = "SELECT COUNT($wpdb->term_relationships.object_id) AS count FROM $wpdb->term_relationships
+                    LEFT JOIN $wpdb->terms ON $wpdb->terms.slug = %s
+                    LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = $wpdb->terms.term_id
+                    WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
+                    ORDER BY $wpdb->term_relationships.object_id DESC;";
+        $result = $wpdb->get_results( $wpdb->prepare( $query, $category_name ));
+
+        if(empty($result)) return FALSE;
+        return $result[0]->count;
     }
 }
 
