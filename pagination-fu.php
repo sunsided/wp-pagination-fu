@@ -1192,8 +1192,6 @@ class PaginationFuClass
 
         // check for comments mode and leave if necessary
         if($type == 'comments' && !get_option('page_comments')) return FALSE;
-        
-        if($type == 'comments') return "Kommentar-Rendern ist aus Testgründen deaktiviert.";
 
         // Generate the content
         $enumerator = new PaginationFuEnumerator($args);
@@ -1211,8 +1209,8 @@ class PaginationFuClass
         $content  = str_ireplace('{class}', $class, $this->configuration['tags']['html_main_start']);
         $content .= str_ireplace('{class}', $class, $this->configuration['tags']['html_list_start']);
         $content .= implode('', $list);
-        $content .= $this->options['html_list_end'];
-        $content .= $this->options['html_main_end']."\n";
+        $content .= $this->configuration['tags']['html_list_end'];
+        $content .= $this->configuration['tags']['html_main_end']."\n";
 
         // Apply filters and return
         $filtered_content = apply_filters('pagination_fu', $content);
