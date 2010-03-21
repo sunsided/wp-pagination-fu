@@ -518,7 +518,7 @@ class PaginationFuEnumerator
             $page = max(min($page, $pages), 1);
 
             // do not render if there is only one page
-            if($pages <= 1 && !$this->arguments['options']['always_show_comments_pagination']) return FALSE;
+            if($pages <= 1 && !$this->arguments['always_show_comments_pagination']) return FALSE;
         }
         // index/archive page behavior
         elseif(is_home() || is_archive()) // || is_404()
@@ -832,7 +832,7 @@ class PaginationFuEnumerator
             if(empty($category))
                 $url  = trailingslashit(get_option('home')).'?category_name='.$cat_name.'&paged='.$pageId;
             else
-                $url  = trailingslashit(get_option('home')).'cat='.$category->cat_ID.'&paged='.$pageId;
+                $url  = trailingslashit(get_option('home')).'?cat='.$category->cat_ID.'&paged='.$pageId;
 
             // Filter the URL (i.e. for subdomain plug-ins, etc.)
             $url = apply_filters('get_pagenum_link', $url);
@@ -894,7 +894,7 @@ class PaginationFuEnumerator
      * Gets the page index from a post ID
      * @return int|bool The page index (1 based) or FALSE in case of an error
      */
-    protected function getPageIdFromPostId($postId, $postIndex = FALSE)
+    protected function getPageIndexFromPostId($postId, $postIndex = FALSE)
     {
         global $wpdb, $wp_query;
 
@@ -927,12 +927,16 @@ class PaginationFuEnumerator
     protected function getPageIdFromCategory($post_count = FALSE, $category_name = FALSE)
     {
         global $wpdb, $wp_query;
-
+        
         if($category_name === FALSE) $category_name = $wp_query->query['category_name'];
         if(empty($category_name)) return FALSE;
 
         // Get the number of posts
-        if(empty($post_count)) $post_count = $this->getPageCountFromCategory($category_name);
+        $force_calculation = FALSE;
+        if(empty($post_count)) {
+            $post_count = $this->getPageCountFromCategory($category_name);
+            $force_calculation = TRUE;            
+        }
 
         // Get the current post index
         $query = "SELECT COUNT($wpdb->term_relationships.object_id) AS count FROM $wpdb->term_relationships
@@ -947,7 +951,7 @@ class PaginationFuEnumerator
         $postIndex = $result[0]->count;
 
         // calculate the page id
-        return $this->getPageIndexFromPostIndex($postIndex);
+        return $this->getPageIndexFromPostIndex($postIndex, $force_calculation);
     }
     
     /**
