@@ -389,11 +389,12 @@ class PaginationFuEnumerator
         
         // Prepare the array
         $items = array();
-        $current = $error ? 0 : $page; // prevent highlighting a page
+        
+        $current = !empty($error) ? 0 : $page; // prevent highlighting a page
         
         // prev page       
         $previousPageId = max($page-1, 1);
-        $this->addStatic($items, $previousPageId, $page, 'prev');
+        if ($pages > 1) $this->addStatic($items, $previousPageId, $page, 'prev');
         
         // Render the blocks
         $this->enumerateRange($items, $leftBlock['start'], $leftBlock['end'], $current);
@@ -410,7 +411,7 @@ class PaginationFuEnumerator
         
         // prev page
         $nextPageId = min($page+1, $pages);
-        $this->addStatic($items, $nextPageId, $page, 'next');
+        if ($pages > 1) $this->addStatic($items, $nextPageId, $page, 'next');
         
         // revert array if necessary
         //TODO: Comment behavior
@@ -496,7 +497,7 @@ class PaginationFuEnumerator
      * @param pageCount int The total number of pages
      * @return array The page information or FALSE in case of an error
      */
-    private function &getCurrentPageAndPageCount($currentPage = 0, $pageCount = 0)
+    private function getCurrentPageAndPageCount($currentPage = 0, $pageCount = 0)
     {
         global $wpdb, $wp_query;
         
