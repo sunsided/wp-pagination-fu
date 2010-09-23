@@ -217,7 +217,7 @@ class PaginationFuRenderer
      * @param pageList array The page list
      * @return array The rendered items.
      */
-    public function &render(array $pageList)
+    public function render(array $pageList)
     {
         $list = array();
         $position = -1;
@@ -298,7 +298,7 @@ class PaginationFuEnumerator
      * @param pageCount int The total number of pages
      * @return array An array of PaginationFuEntity arrays or FALSE in case of an error.
      */
-    public function &enumeratePages($currentPage = 0, $pageCount = 0)
+    public function enumeratePages($currentPage = 0, $pageCount = 0)
     {       
         // Get the page numbers
         $data                   = $this->getCurrentPageAndPageCount($currentPage, $pageCount);              
@@ -395,7 +395,7 @@ class PaginationFuEnumerator
         // prev page       
         $previousPageId = max($page-1, 1);
         if ($pages > 1) $this->addStatic($items, $previousPageId, $page, 'prev');
-        
+
         // Render the blocks
         $this->enumerateRange($items, $leftBlock['start'], $leftBlock['end'], $current);
         if($centerBlockNeeded)
@@ -460,7 +460,7 @@ class PaginationFuEnumerator
         if($comments_mode)
             $name           = $type == 'next' ? $this->arguments['translations']['html_newer'] : $this->arguments['translations']['html_older']; 
         
-        $link               = &$this->generateEntity($index, FALSE);
+        $link               = $this->generateEntity($index, FALSE);
         $link->name         = $name; 
         
         $link->isCurrent    = $index == $currentPage;
@@ -487,7 +487,7 @@ class PaginationFuEnumerator
         for($i=$start; $i<=$end; ++$i)
         {
             $is_current = ($i == $current);
-            $items[] = &$this->generateEntity($i, $is_current);
+            $items[] = $this->generateEntity($i, $is_current);
         }
     }
     
@@ -568,7 +568,7 @@ class PaginationFuEnumerator
                 $result = $wpdb->get_results( $wpdb->prepare( "
                             		SELECT COUNT(*) AS count
                             		FROM $wpdb->posts
-                            		WHERE wp_posts.ID >= %d
+                            		WHERE ID >= %d
                             			AND (post_type = 'post'
                             				AND post_parent = '0'
                             				AND post_status = 'publish')
@@ -606,10 +606,10 @@ class PaginationFuEnumerator
      * @param isCurrent boolean Whether this is the current item
      * @return &PaginationFuEntity The generated entity
      */
-    private function &generateEntity($index, $isCurrent = FALSE)
+    private function generateEntity($index, $isCurrent = FALSE)
     {      
         $pageId     = $this->translateStrideIndexToPageId($index);
-        $data       = &$this->getPageData($pageId, $index);
+        $data       = $this->getPageData($pageId, $index);
         $url        = $this->getUrl($pageId, $index, $data);
         $name       = $this->generateName($pageId, $index, $data);
         $title      = $name;
@@ -642,7 +642,7 @@ class PaginationFuEnumerator
      * @var pageId int The page ID
      * @return Page information.
      */
-    private function &getPageData($pageId, $index)
+    private function getPageData($pageId, $index)
     {
         $pageData = array();
         
@@ -704,7 +704,7 @@ class PaginationFuEnumerator
             if($parent_category === FALSE || !$this->arguments['enable_cat_browsing'])
             {
                 $result = $wpdb->get_results( $wpdb->prepare( "
-                            		SELECT wp_posts.ID
+                            		SELECT ID
                             		FROM $wpdb->posts
                             		WHERE (post_type = 'post'
                             				AND post_parent = '0'
@@ -719,7 +719,7 @@ class PaginationFuEnumerator
                 $result = $wpdb->get_results( $wpdb->prepare( "
                             		SELECT $wpdb->term_relationships.object_id as ID FROM $wpdb->term_relationships
                                         LEFT JOIN $wpdb->term_taxonomy ON $wpdb->term_taxonomy.term_id = 8
-                                        LEFT JOIN $wpdb->posts ON wp_posts.ID = $wpdb->term_relationships.object_id
+                                        LEFT JOIN $wpdb->posts ON ".$wpdb->posts.".ID = $wpdb->term_relationships.object_id
                                         WHERE $wpdb->term_relationships.term_taxonomy_id = $wpdb->term_taxonomy.term_taxonomy_id
                                             AND (post_type = 'post'
                                             AND post_parent = '0'
@@ -924,7 +924,7 @@ class PaginationFuEnumerator
             $result = $wpdb->get_results( $wpdb->prepare( "
                         		SELECT COUNT(*) AS count
                         		FROM $wpdb->posts
-                        		WHERE wp_posts.ID >= %d
+                        		WHERE ID >= %d
                         			AND (post_type = 'post'
                         				AND post_parent = '0'
                         				AND post_status = 'publish')
@@ -1169,6 +1169,7 @@ class PaginationFuClass
     public function embedCSS()
     {
         $file = WP_PLUGIN_URL.'/'.dirname(plugin_basename(__FILE__)).'/pagination-fu.css';
+        #$file = WP_PLUGIN_URL.'/pagination-fu/pagination-fu.css';
 
         // load user specific template, if it exists
         if (false !== @file_exists(TEMPLATEPATH . "/pagination-fu.css")) {
