@@ -1,13 +1,13 @@
-<?php
+﻿<?php
 /*
 Plugin Name: Pagination Fu!
 Description: Yet another pagination plugin.
 Author: Markus Mayer
 Version: 1.0
-Author URI: http://blog.defx.de
+Author URI: http://dev.widemeadows.de
 License: GPL2
 
-    Copyright 2010  Markus Mayer
+    Copyright 2010-2016  Markus Mayer
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License, version 2, as
